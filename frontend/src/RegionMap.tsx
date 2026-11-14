@@ -1,11 +1,11 @@
 import { registerMap, use } from 'echarts/core';
-import { MapChart, ScatterChart } from 'echarts/charts';
+import { MapChart, ScatterChart, TreemapChart } from 'echarts/charts';
 import { GeoComponent } from 'echarts/components';
 import china from './assets/china-provinces.json';
 import { Plot } from './Charts';
 import type { ChartSelection } from './Charts';
 import type { Snapshot } from './types';
-use([MapChart, ScatterChart, GeoComponent]);
+use([MapChart, ScatterChart, TreemapChart, GeoComponent]);
 registerMap('china-provinces', china as Parameters<typeof registerMap>[1]);
 export function RegionMap({data, onSelect, dark=false}: {data: Snapshot; dark?:boolean; onSelect?: (r: ChartSelection) => void}) {
   const regions = data.regions || [];
@@ -31,8 +31,18 @@ export function RegionMap({data, onSelect, dark=false}: {data: Snapshot; dark?:b
             {type:'scatter',coordinateSystem:'geo',data:rows.map(r=>({name:r.name,value:[...(r.center || [0,0]),r.value]})),
               symbolSize:(v:number[])=>v[2] ? Math.min(35, 7+Math.sqrt(v[2])*2) : 0,
               itemStyle:{color:'#d8ba7c',opacity:0.9}}] }} />
-      <div className="province-ranking" aria-label="省份信息数量排行">{[...regions].sort((a,b)=>b.count-a.count).map((r,i)=><div className="province-row" key={r.name}>
-        <span>{r.name}</span><span className="province-track"><i style={{width:`${r.count/Math.max(1,...regions.map(x=>x.count))*100}%`,background:['#54b8ca','#e58aaa','#8ebd98','#e8bb69','#a5a0df'][i%5]}}/></span><b>{r.count}</b>
-      </div>)}{!regions.length&&<span className="hint">暂无地区信息</span>}</div></div>
+      <div className="province-treemap">
+        <Plot label={`各省份信息数量，色块面积代表条数：${regions.map(r=>`${r.name}${r.count}条`).join('，')}`}
+          option={{tooltip:{trigger:'item',formatter:(p:{name:string;value:number})=>`${p.name} · ${p.value} 条`},
+            series:[{type:'treemap',name:'省份分布',left:0,right:0,top:0,bottom:0,
+              roam:false,nodeClick:false,squareRatio:1,breadcrumb:{show:false},visibleMin:0,childrenVisibleMin:0,
+              label:{show:true,formatter:'{b}\n{c} 条',fontSize:10,lineHeight:12,padding:0,color:'#162a39',overflow:'truncate'},
+              upperLabel:{show:false},itemStyle:{borderColor:dark?'#1b2128':'#fff',borderWidth:1,gapWidth:3},
+              levels:[{itemStyle:{borderWidth:0,gapWidth:3}}],
+              data:[...regions].sort((a,b)=>a.name.localeCompare(b.name,'zh-CN')).map((r,i)=>({name:r.name,value:r.count,
+                itemStyle:{color:['#77c7d5','#eda2ba','#a8cda6','#edc779','#b7afe6','#7fc9b7'][i%6]}}))}]
+          }}/>
+        {!regions.length&&<span className="chart-empty">暂无地区信息</span>}
+      </div></div>
   </section>;
 }
