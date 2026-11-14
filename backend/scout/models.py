@@ -189,3 +189,11 @@ class CustomerSignal(Base):
     quality_status: Mapped[str] = mapped_column(String(20))
     quality_reason: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[float] = mapped_column(Float, default=time.time, index=True)
+
+
+class BacklogSample(Base):
+    __tablename__ = "business_backlog_samples"
+    minute: Mapped[int] = mapped_column(Integer, primary_key=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, primary_key=True)
+    pending: Mapped[int] = mapped_column(Integer)
+    waiting_claim: Mapped[int] = mapped_column(Integer)

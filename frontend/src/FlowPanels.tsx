@@ -32,7 +32,7 @@ export function Information({ items, open, autoScroll = false, lifecycle = true 
       <td>{sourceName(item)}</td><td>{businessState(item)}</td>
       <td data-field="fragments"><div className="fragment-tags">{(item.fragments || []).map(f => <button onClick={()=>open(item)}
         className="fragment-tag" key={f.index} data-landed-fragment={`${item.id}:fragments:${f.index}`}>{f.text}</button>)}</div></td>
-      <td data-field="url">{item.url ? <a className="single-line" href={item.url} target="_blank" rel="noopener noreferrer">{item.url}</a> : '—'}</td>
+      <td data-field="url">{item.url ? <a className="single-line" href={item.url} target="_blank" rel="noopener noreferrer">{new URL(item.url).hostname}</a> : '—'}</td>
       <td data-field="published_at">{item.published_at || '—'}</td><td data-field="created_at">{lifecycle?fullTime(item.created_at):item.created_at?clock(item.created_at):'—'}</td>
       {lifecycle && <><td>{fullTime(item.sent_at)}</td><td>{item.requires_claim===false?'—':item.claimed_by||'—'}</td><td>{item.requires_claim===false?'—':fullTime(item.claimed_at)}</td></>}
     </tr>)}</tbody>

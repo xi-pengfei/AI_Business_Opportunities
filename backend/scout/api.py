@@ -13,6 +13,7 @@ from scout.assignments import assignment_facts, pending_items
 from scout.config import settings
 from scout.db import Session
 from scout.display import chart_facts, collector_status, discovery_facts, public_tasks, unique_items
+from scout.flow_metrics import flow_facts
 from scout.information import item_record
 from scout.models import (
     Attempt,
@@ -313,6 +314,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             ),
             "trend": buckets,
             **chart_facts(db, demo, start),
+            **flow_facts(db, demo, now, current == "admin"),
             **discovery_facts(db, demo, now),
             "delivery": {"available": False, "sent": None},
             **assignment_facts(db, demo, now, current == "admin"),

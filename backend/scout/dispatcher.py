@@ -3,6 +3,8 @@
 import logging
 import time
 
+from scout.db import Session
+from scout.flow_metrics import record_backlog
 from scout.retention import archive_expired
 from scout.service import dispatch_pending, recover_expired, schedule_due
 from scout.worker import run_task
@@ -15,6 +17,9 @@ def main():
         if time.monotonic() >= next_archive:
             try:
                 archive_expired()
+                with Session() as db:
+                    record_backlog(db, False, time.time())
+                    db.commit()
                 next_archive = time.monotonic() + 60
             except Exception as exc:
                 logging.warning("archive tick failed (%s); retrying", type(exc).__name__)

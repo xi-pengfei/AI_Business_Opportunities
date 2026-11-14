@@ -9,9 +9,10 @@ import { Xiaohongshu } from "./Xiaohongshu";
 import { FollowupPanels } from "./FollowupPanels";
 import { Customers } from "./Customers";
 import { Spider } from "./Spider";
-import { clock, status, errors } from "./types";
+import { clock, fullTime, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
 import "./style.css";
+import "./display-layout.css";
 
 const base = "/api/v1";
 function App() {
@@ -21,6 +22,8 @@ function App() {
     ["display", "rules", "customers", "xiaohongshu", "tasks", "information"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
   );
   const demo = false;
+  const [fullscreen,setFullscreen]=useState(!!document.fullscreenElement);
+  useEffect(()=>{const changed=()=>setFullscreen(!!document.fullscreenElement);document.addEventListener('fullscreenchange',changed);return()=>document.removeEventListener('fullscreenchange',changed);},[]);
   const [chartSelection, setChartSelection] = useState<ChartSelection | null>(null);
   const [data, setData] = useState<Snapshot | null>(null);
   const [rules, setRules] = useState<Rule[]>([]),
@@ -310,14 +313,14 @@ function App() {
   const display = page === "display";
 
   return (
-    <main className={display ? "screen" : "workspace"}>
+    <main className={display ? `screen${fullscreen ? " is-fullscreen" : ""}` : "workspace"}>
       <header className="mast">
         <h1>AI商机智能体</h1>
         <div className="toolbar">
-          <button onClick={() => navigate(display ? "rules" : "display")}>
+          <button className="management-action" hidden={fullscreen} onClick={() => navigate(display ? "rules" : "display")}>
             {display ? "管理台" : "展示大屏"}
           </button>
-          <button
+          <button hidden={fullscreen}
             onClick={() => {
               setToken("");
               setData(null);
@@ -327,14 +330,15 @@ function App() {
           </button>
           {display && (
             <button
-              onClick={() =>
+              onClick={() => {
+                setError("");
                 (document.fullscreenElement
                   ? document.exitFullscreen()
                   : document.documentElement.requestFullscreen()
-                ).catch(() => setError("当前浏览器无法切换全屏"))
-              }
+                ).catch(() => setError("当前浏览器无法切换全屏"));
+              }}
             >
-              全屏
+              {fullscreen ? "退出全屏" : "全屏"}
             </button>
           )}
         </div>
@@ -375,7 +379,7 @@ function App() {
       )}
       {display && data && (
         <>
-          <div className="charts"><Charts data={data} onSelect={setChartSelection} onOpenItem={id=>{if(data.items.some(i=>i.url)) request(`/items/${id}`).then(setDetail).catch(e=>setError(e.message));}} /></div>
+          <div className="charts"><Charts data={data} onSelect={setChartSelection} dark={fullscreen} /></div>
           {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
             selection={chartSelection} request={request} close={() => setChartSelection(null)}
             open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
@@ -430,7 +434,7 @@ function App() {
           </div>
           <div className="workfield">
             <section className="panel terminal">
-              <h2>来源终端</h2>
+              <h2>信息来源</h2>
               <div className="terminal-feed">
                 {terminalFeed.map(entry => <article className={`source-preview ${moving?.id === entry.id ? "cargo-source" : ""}`} key={entry.id}>
                   <SourceFields item={entry} moving={moving} landed={landed} />
@@ -723,7 +727,7 @@ function App() {
       )}
       <div className="notice" role="status">
         {connected ? "服务已连接" : "连接中断或等待服务"} · {streamState}
-        {data && ` · 最后更新 ${clock(data.server_time)}`}
+        {data && ` · 最后更新 ${fullTime(data.server_time)}`}
       </div>
     </main>
   );

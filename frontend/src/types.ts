@@ -29,6 +29,9 @@ export type Execution = {
   is_demo: boolean;
 };
 export type Snapshot = {
+  information_sources: Record<string, number>;
+  information_flows: {source:string;target:string;value:number}[];
+  backlog_history: number[][];
   active_item_ids: string[];
   pending_count: number;
   backlog_count: number;
