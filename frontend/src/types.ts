@@ -36,6 +36,8 @@ export type Snapshot = {
   item_count: number;
   trend: number[][];
   collection_history: number[][];
+  discovery_history: { start: number; end: number; sources: Record<string, number> }[];
+  discovery_calendar: { date: string; start: number; end: number; count: number }[];
   source_counts: Record<string, number>;
   items: Item[];
   events: Execution[];

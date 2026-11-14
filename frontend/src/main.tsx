@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { Charts } from "./Charts";
+import type { ChartSelection } from "./Charts";
 import { Spider } from "./Spider";
 import { clock, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
@@ -14,6 +15,7 @@ function App() {
     location.pathname === "/display" ? "display" : "rules",
   );
   const demo = false;
+  const [chartSelection, setChartSelection] = useState<ChartSelection | null>(null);
   const [data, setData] = useState<Snapshot | null>(null);
   const [rules, setRules] = useState<Rule[]>([]),
     [tasks, setTasks] = useState<Task[]>([]),
@@ -97,6 +99,7 @@ function App() {
     }
   }, [token, demo, page, request]);
   useEffect(() => {
+    setChartSelection(null);
     hydrated.current = false;
     seen.current.clear();
     setMoving(null);
@@ -315,7 +318,11 @@ function App() {
       )}
       {display && data && (
         <>
-          <Charts data={data} />
+          <Charts data={data} onSelect={setChartSelection} />
+          {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}`}
+            selection={chartSelection} request={request} close={() => setChartSelection(null)}
+            open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
+
           <div className="collector-strip">
             {data.collectors?.length ? (
               data.collectors.map((c) => (
@@ -680,6 +687,38 @@ function App() {
       </div>
     </main>
   );
+}
+function ChartRecords({ selection, request, close, open }: {
+  selection: ChartSelection;
+  request: (path: string) => Promise<{ total: number; items: Item[] }>;
+  close: () => void;
+  open: (item: Item) => void;
+}) {
+  const [offset, setOffset] = useState(0);
+  const [result, setResult] = useState<{ total: number; items: Item[] } | null>(null);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { heading.current?.focus(); }, []);
+  useEffect(() => {
+    let active = true;
+    setResult(null); setError("");
+    const params = new URLSearchParams({ start: String(selection.start), end: String(selection.end), offset: String(offset) });
+    if (selection.provider) params.set("provider", selection.provider);
+    request(`/display/items?${params}`).then(r => { if (active) setResult(r); })
+      .catch(e => { if (active) setError(e.message); });
+    return () => { active = false; };
+  }, [selection, offset, request, retry]);
+  return <section className="panel chart-records">
+    <div className="detail-title"><h2 tabIndex={-1} ref={heading}>{selection.label}
+      {result && <small> · {result.total} 条</small>}</h2><button onClick={close}>关闭筛选</button></div>
+    {error ? <p role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>重试</button></p>
+      : !result ? <p>正在读取信息…</p> : <>
+        <Information items={result.items} open={open} />
+        <div className="chart-pager"><button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>上一页</button>
+          <span>第 {offset / 50 + 1} 页</span><button disabled={offset + 50 >= result.total} onClick={() => setOffset(offset + 50)}>下一页</button></div>
+      </>}
+  </section>;
 }
 function Information({
   items,

@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 
 from scout.config import settings
 from scout.db import Session
-from scout.display import chart_facts, collector_status, unique_items
+from scout.display import chart_facts, collector_status, discovery_facts, unique_items
 from scout.models import Attempt, Document, Event, Item, Outbox, Rule, Task
 from scout.service import emit, start_rule
 
@@ -216,6 +216,31 @@ def item_detail(item_id: str):
         return {**record(item), "evidence": record(db.get(Document, item.document_id))}
 
 
+@app.get("/api/v1/display/items")
+def display_items(
+    start: float = Query(ge=0, allow_inf_nan=False),
+    end: float = Query(ge=0, allow_inf_nan=False),
+    provider: str | None = Query(default=None, max_length=80),
+    offset: int = Query(0, ge=0),
+    demo: bool = False,
+    current=Depends(role),
+):
+    if end <= start or end - start > 86400 * 90:
+        raise HTTPException(422, "请选择90天以内的有效时间范围")
+    with Session() as db:
+        query = unique_items(demo).where(Item.created_at >= start, Item.created_at < end)
+        if provider:
+            query = query.join(Document, Item.document_id == Document.id).where(
+                Document.provider == provider
+            )
+        total = db.scalar(select(func.count()).select_from(query.subquery()))
+        rows = db.scalars(query.order_by(Item.created_at.desc(), Item.id).offset(offset).limit(50))
+        return {"total": total, "items": [record(i) if current == "admin" else {
+            "id": i.id, "title": "已归集信息（展示模式已脱敏）",
+            "created_at": i.created_at, "is_demo": i.is_demo,
+        } for i in rows]}
+
+
 @app.get("/api/v1/display/snapshot")
 def snapshot(demo: bool = False, current=Depends(role)):
     now = time.time()
@@ -257,6 +282,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             ),
             "trend": buckets,
             **chart_facts(db, demo, start),
+            **discovery_facts(db, demo, now),
             "collectors": collector_status(db, demo, current),
             "items": [
                 record(i)

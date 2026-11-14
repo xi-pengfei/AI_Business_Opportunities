@@ -680,3 +680,13 @@ time {
   width: 100px;
   accent-color: #70c3ce;
 }
+
+/* Chart evidence is an explicit drill-down, independent from the live spider feed. */
+.chart-link { padding: 4px 0; min-height: 28px; border: 0; background: transparent; color: #70c3ce; font-size: 12px; }
+.screen .chart-data, .screen .chart-records { padding: 16px; margin: 16px 0; }
+.chart-data .table-scroll, .chart-records .table-scroll { max-height: 360px; overflow: auto; }
+.chart-data caption { text-align: left; padding: 0 0 12px; color: #a6afb9; }
+.chart-pager { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 12px; }
+.chart-records h2:focus-visible { outline: 2px solid #70c3ce; outline-offset: 4px; }
+
+.source-filter { margin: 2px 6px 2px 0; }

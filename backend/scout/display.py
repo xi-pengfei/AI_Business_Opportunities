@@ -149,3 +149,37 @@ def collector_status(db, demo, role):
             }
         )
     return output
+
+
+def discovery_facts(db, demo, now):
+    """Count first URL appearances, using Shanghai civil days, not browser timezone."""
+    from datetime import datetime, timedelta, timezone
+
+    zone = timezone(timedelta(hours=8))
+    today = datetime.fromtimestamp(now, zone).replace(hour=0, minute=0, second=0, microsecond=0)
+    day_start = int((today - timedelta(days=89)).timestamp())
+    minute_start = int(now // 60) * 60 - 29 * 60
+    first = unique_items(demo).subquery()
+    minute = func.floor((first.c.created_at - minute_start) / 60)
+    grouped = db.execute(
+        select(minute, Document.provider, func.count())
+        .select_from(first).join(Document, Document.id == first.c.document_id)
+        .where(first.c.created_at >= minute_start, first.c.created_at <= now)
+        .group_by(minute, Document.provider)
+    ).all()
+    growth = [{"start": minute_start + i * 60, "end": minute_start + (i + 1) * 60,
+               "sources": {}} for i in range(30)]
+    for index, provider, count in grouped:
+        if 0 <= int(index) < 30:
+            growth[int(index)]["sources"][provider] = count
+    day = func.floor((first.c.created_at - day_start) / 86400)
+    counts = dict(db.execute(
+        select(day, func.count()).select_from(first)
+        .where(first.c.created_at >= day_start, first.c.created_at <= now).group_by(day)
+    ).all())
+    calendar = []
+    for i in range(90):
+        stamp = day_start + i * 86400
+        calendar.append({"date": datetime.fromtimestamp(stamp, zone).date().isoformat(),
+                         "start": stamp, "end": stamp + 86400, "count": counts.get(i, 0)})
+    return {"discovery_history": growth, "discovery_calendar": calendar}

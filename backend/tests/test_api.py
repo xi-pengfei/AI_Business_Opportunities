@@ -60,3 +60,46 @@ def test_retry_only_after_failure(client):
         client.get(f"/api/v1/tasks/{task['id']}").json()["attempt_history"][0]["outcome"]
         == "action_required"
     )
+
+
+def test_chart_days_dedupe_and_filtered_evidence_permissions(client, database, monkeypatch):
+    from datetime import datetime
+
+    from scout import api
+    from scout.models import Document, Item
+
+    midnight = datetime.fromisoformat("2026-11-14T00:00:00+08:00").timestamp()
+    monkeypatch.setattr(api.time, "time", lambda: midnight + 120)
+    with database.begin() as db:
+        for i, (url, stamp, provider, demo) in enumerate([
+            ("https://example.org/a", midnight - 1, "tavily", False),
+            ("https://example.org/a", midnight + 1, "searxng", False),
+            ("https://example.org/b", midnight, "searxng", False),
+            ("https://example.org/c", midnight + 60, "searxng", False),
+            ("https://example.org/d", midnight + 1, "demo", True),
+        ]):
+            doc = Document(id=str(i), identity=str(i), url=url, title="私有标题",
+                           raw_content="私有内容", content_kind="search_excerpt",
+                           content_hash=str(i), provider=provider, is_demo=demo)
+            db.add(doc)
+            db.flush()
+            db.add(Item(document_id=doc.id, title="私有标题", url=url, text="私有内容",
+                        contacts=[{"type": "email", "value": "private@example.org"}],
+                        created_at=stamp, is_demo=demo))
+    snapshot = client.get("/api/v1/display/snapshot").json()
+    assert len(snapshot["discovery_calendar"]) == 90
+    assert snapshot["discovery_calendar"][-1]["count"] == 2
+    assert snapshot["discovery_calendar"][-2]["count"] == 1
+    assert sum(sum(r["sources"].values()) for r in snapshot["discovery_history"]) == 3
+    path = f"/api/v1/display/items?start={midnight}&end={midnight + 60}&provider=searxng"
+    result = client.get(path).json()
+    assert result["total"] == 1
+    assert result["items"][0]["url"] == "https://example.org/b"
+    public = client.get(path, headers={"Authorization": "Bearer test-display"}).json()
+    assert public["total"] == 1
+    assert "url" not in public["items"][0]
+    assert "contacts" not in public["items"][0]
+    assert "私有" not in str(public)
+    assert client.get(path + "&offset=50").json()["items"] == []
+    assert client.get("/api/v1/display/items?start=2&end=1").status_code == 422
+    assert client.get(path, headers={"Authorization": "Bearer wrong"}).status_code == 401
