@@ -170,3 +170,32 @@ def test_bad_source_does_not_cancel_other_results(database, monkeypatch):
     with database() as db:
         assert db.scalar(select(func.count()).select_from(Item)) == 1
         assert {db.get(Task, c).status for c in children} == {"succeeded", "retry_wait"}
+
+
+def test_display_cumulative_dedupe_and_window_baseline(database):
+    from scout.display import chart_facts
+
+    drain(database, make_task(database, key="chart-one"))
+    drain(database, make_task(database, key="chart-two"))
+    with database() as db:
+        current = chart_facts(db, True, int(time.time() // 60) * 60 - 29 * 60)
+        assert current["collection_history"][-1][1:] == [2, 1, 0]
+        assert current["source_counts"] == {"demo": 1}
+        future = chart_facts(db, True, time.time() + 60)
+        assert all(row[1:] == [2, 1, 0] for row in future["collection_history"])
+        live = chart_facts(db, False, time.time() - 60)
+        assert all(row[1:] == [0, 0, 0] for row in live["collection_history"])
+        assert live["source_counts"] == {}
+
+
+def test_display_queue_counts_retry(database):
+    from scout.display import chart_facts
+
+    task_id = make_task(database)
+    start = int(time.time() // 60) * 60 - 29 * 60
+    with database() as db:
+        assert chart_facts(db, True, start)["collection_history"][-1][3] == 1
+    token, _, _ = service.claim(task_id)
+    service.finish(task_id, token, error=ProviderError("temporary"))
+    with database() as db:
+        assert chart_facts(db, True, start)["collection_history"][-1][3] == 1

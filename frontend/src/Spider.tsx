@@ -1,8 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Item } from "./types";
 // Visual delivery only: the item has already been committed by the backend.
 export function Spider({ item }: { item: Item | null }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const [size, setSize] = useState("");
+  useEffect(() => {
+    const parent = ref.current?.parentElement;
+    if (!parent) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setSize(`${entry.contentRect.width}:${entry.contentRect.height}`);
+    });
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas || matchMedia("(prefers-reduced-motion: reduce)").matches)
@@ -77,11 +87,21 @@ export function Spider({ item }: { item: Item | null }) {
         ctx.lineTo(f.x, f.y);
         ctx.stroke();
         ctx.fillStyle = "#e393b0";
-        ctx.fillRect(f.x - 1.5, f.y - 1.5, 3, 3);
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, 1.8, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.fillStyle = "#080a0d";
-      ctx.fillRect(x - 18, y - 5, 36, 10);
-      ctx.strokeRect(x - 18, y - 5, 36, 10);
+      ctx.beginPath();
+      ctx.moveTo(x - 22, y);
+      ctx.lineTo(x - 8, y - 8);
+      ctx.lineTo(x + 18, y - 5);
+      ctx.lineTo(x + 25, y);
+      ctx.lineTo(x + 10, y + 7);
+      ctx.lineTo(x - 14, y + 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
       if (item && p > 0.12 && p < 0.82) {
         const message = (item!.text || item!.title).slice(0, 23);
         ctx.font = "12px system-ui";
@@ -98,6 +118,6 @@ export function Spider({ item }: { item: Item | null }) {
       cancelAnimationFrame(raf);
       ctx.clearRect(0, 0, r.width, r.height);
     };
-  }, [item]);
+  }, [item, size]);
   return <canvas className="spider" ref={ref} aria-hidden="true" />;
 }

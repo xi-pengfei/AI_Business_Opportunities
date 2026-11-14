@@ -40,3 +40,11 @@
 
 - [Celery 任务、确认与超时](https://docs.celeryq.dev/en/stable/userguide/tasks.html)
 - [Tavily Search API](https://docs.tavily.com/documentation/api-reference/endpoint/search)
+
+## 大屏视觉还原 · 2026-11-14
+
+已按确认原型恢复累计采集/归集双折线、来源分布横条、任务积压曲线，统一中文字阶、终端等宽字体、石墨背景、直角细边框与左右1:2比例。分配区域保留六列表头，但没有虚构人员或回执。设置收起，连接状态移至页尾。
+
+统计新增 collection_history / source_counts；采集计数是已获取结果并创建的 ingest 任务，归集是去重后的唯一信息。来源暂按实际 provider，尚未添加业务类别识别。积压是每分钟末排队和重试数，短于一分钟且已处理的任务可能不会显示峰值。
+
+验证：20项后端测试通过（含重复结果去重后双曲线差异、滑动窗口历史基数、重试积压和模式隔离）；容器前端类型检查与生产构建通过。浏览器核对1920×1080大屏和720px重排，窄屏无页面横向溢出，蜘蛛画布随容器调整。截图在本地忽略目录 runtime/checks/ui-restored-desktop.png。

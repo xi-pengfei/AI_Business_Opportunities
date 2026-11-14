@@ -11,6 +11,7 @@ from sqlalchemy import func, select, text
 
 from scout.config import settings
 from scout.db import Session
+from scout.display import chart_facts
 from scout.models import Attempt, Document, Event, Item, Outbox, Rule, Task
 from scout.service import emit, start_rule
 
@@ -244,6 +245,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
                 select(func.count()).select_from(Item).where(Item.is_demo == demo)
             ),
             "trend": buckets,
+            **chart_facts(db, demo, start),
             "items": [
                 record(i)
                 if current == "admin"

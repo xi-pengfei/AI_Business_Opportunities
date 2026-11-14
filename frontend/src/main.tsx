@@ -249,41 +249,47 @@ function App() {
         <h1>AI商机智能体</h1>
         <span className="mode">{demo ? "演示数据" : "真实数据"}</span>
         <div className="toolbar">
-          <label>
-            数据范围
-            <select
-              value={String(demo)}
-              onChange={(e) => {
-                setDemo(e.target.value === "true");
-                setError("");
-              }}
-            >
-              <option value="false">真实数据</option>
-              <option value="true">演示数据</option>
-            </select>
-          </label>
-          <button onClick={() => navigate(display ? "rules" : "display")}>
-            {display ? "管理台" : "展示大屏"}
-          </button>
+          <details className="display-options">
+            <summary>显示设置</summary>
+            <div className="options-panel">
+              <label>
+                数据范围
+                <select
+                  value={String(demo)}
+                  onChange={(e) => {
+                    setDemo(e.target.value === "true");
+                    setError("");
+                  }}
+                >
+                  <option value="false">真实数据</option>
+                  <option value="true">演示数据</option>
+                </select>
+              </label>
+              <button onClick={() => navigate(display ? "rules" : "display")}>
+                {display ? "管理台" : "展示大屏"}
+              </button>
+              <button
+                onClick={() => {
+                  setToken("");
+                  setData(null);
+                }}
+              >
+                退出
+              </button>
+            </div>
+          </details>
           {display && (
             <button
               onClick={() =>
-                document.documentElement
-                  .requestFullscreen()
-                  .catch(() => setError("当前浏览器无法进入全屏"))
+                (document.fullscreenElement
+                  ? document.exitFullscreen()
+                  : document.documentElement.requestFullscreen()
+                ).catch(() => setError("当前浏览器无法切换全屏"))
               }
             >
               全屏
             </button>
           )}
-          <button
-            onClick={() => {
-              setToken("");
-              setData(null);
-            }}
-          >
-            退出
-          </button>
         </div>
       </header>
       {!display && (
@@ -303,10 +309,6 @@ function App() {
           ))}
         </nav>
       )}
-      <div className="notice" role="status">
-        {connected ? "服务已连接" : "连接中断或等待服务"} · {streamState}
-        {data && ` · 最后更新 ${clock(data.server_time)}`}
-      </div>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -366,7 +368,7 @@ function App() {
                 </p>
               )}
             </section>
-            <section className="panel">
+            <section className="panel library">
               <h2>
                 信息库 <small>{data.item_count} 条</small>
               </h2>
@@ -384,8 +386,26 @@ function App() {
           </div>
           <section className="panel handoff">
             <h2>分配与接收</h2>
-            <div className="empty">
-              分配和通知尚未接入。已归集的信息可先在信息库查看与人工跟进。
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>信息</th>
+                    <th>负责人</th>
+                    <th>分配时间</th>
+                    <th>推送结果</th>
+                    <th>接收状态</th>
+                    <th>接收时间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colSpan={6} className="empty">
+                      分配与通知尚未接入 · 已归集信息可在信息库查看与人工跟进
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </section>
         </>
@@ -625,6 +645,10 @@ function App() {
           <pre>{detail.evidence.raw_content}</pre>
         </section>
       )}
+      <div className="notice" role="status">
+        {connected ? "服务已连接" : "连接中断或等待服务"} · {streamState}
+        {data && ` · 最后更新 ${clock(data.server_time)}`}
+      </div>
     </main>
   );
 }

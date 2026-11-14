@@ -21,6 +21,8 @@ export type Snapshot = {
   task_counts: Record<string, number>;
   item_count: number;
   trend: number[][];
+  collection_history: number[][];
+  source_counts: Record<string, number>;
   items: Item[];
   events: Execution[];
 };

@@ -417,3 +417,241 @@ time {
   color: #c5cdd6;
   line-height: 2;
 }
+
+/* Approved graphite terminal: shared type, fine rules, generous plot area. */
+.screen {
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  padding: 24px;
+  font-size: 14px;
+  min-height: 100dvh;
+}
+.screen .mast {
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.screen h1 {
+  font-size: clamp(1.4rem, 1rem + 0.5vw, 1.7rem);
+  font-weight: 550;
+}
+.screen .panel {
+  border-radius: 0;
+  padding: 0;
+}
+.screen h2 {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+}
+.screen .charts {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+.screen .chart-panel {
+  padding: 16px;
+}
+.screen .chart-panel h2 {
+  margin-bottom: 12px;
+}
+.screen .chart-panel small {
+  font:
+    11px ui-monospace,
+    monospace;
+}
+.screen .plot {
+  height: 208px;
+}
+.plot-wrap {
+  position: relative;
+}
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #a6afb9;
+  font-size: 12px;
+  pointer-events: none;
+}
+.screen .workfield {
+  min-height: 392px;
+}
+.screen .terminal {
+  padding: 20px;
+  position: relative;
+  font:
+    13px/1.9 ui-monospace,
+    "SFMono-Regular",
+    "PingFang SC",
+    monospace;
+}
+.screen .terminal h2 {
+  font-family: "PingFang SC", system-ui, sans-serif;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #353b43;
+  margin-bottom: 20px;
+}
+.screen .source-preview {
+  min-height: 172px;
+  margin-bottom: 24px;
+}
+.screen .source-preview h3 {
+  font: inherit;
+  color: #e5e8ec;
+  margin: 16px 0;
+}
+.screen .source-preview p {
+  color: #a6afb9;
+  line-height: 2.2;
+}
+.screen .source-preview a {
+  color: #96cfd4;
+  font-size: 12px;
+}
+.screen .log {
+  padding: 8px 0;
+  border: 0;
+  font-size: 11px;
+}
+.screen .terminal > p {
+  font-size: 12px;
+  border-top: 1px solid #353b43;
+  padding-top: 12px;
+  margin-bottom: 8px;
+}
+.screen .library {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.screen .library h2,
+.screen .handoff h2 {
+  padding: 16px 20px;
+  border-bottom: 1px solid #353b43;
+}
+.screen table {
+  font-size: 13px;
+  table-layout: fixed;
+}
+.screen th {
+  padding: 12px 16px;
+  font-size: 12px;
+}
+.screen td {
+  padding: 16px;
+  line-height: 1.9;
+}
+.screen .library th:first-child {
+  width: 57%;
+}
+.screen .library th:nth-child(2) {
+  width: 25%;
+}
+.screen .excerpt {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #a6afb9;
+}
+.screen td small,
+.screen td a {
+  font:
+    11px/1.8 ui-monospace,
+    "PingFang SC",
+    monospace;
+}
+.screen tbody tr:hover {
+  background: #242b30;
+}
+.screen .handoff table {
+  table-layout: auto;
+}
+.screen .handoff .empty {
+  font-size: 12px;
+  padding: 20px;
+}
+.screen .notice {
+  margin-top: 16px;
+  margin-bottom: 0;
+  font:
+    11px/1.8 ui-monospace,
+    "PingFang SC",
+    monospace;
+}
+.screen .toolbar button {
+  background: transparent;
+  border-radius: 2px;
+}
+.screen .display-options {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.screen .display-options summary {
+  cursor: pointer;
+  color: #a6afb9;
+  font-size: 12px;
+}
+.screen .display-options[open] {
+  position: relative;
+}
+.screen .display-options .options-panel {
+  position: absolute;
+  right: 0;
+  top: 32px;
+  z-index: 8;
+  width: 240px;
+  padding: 16px;
+  border: 1px solid #535d69;
+  background: #24292f;
+  display: grid;
+  gap: 12px;
+}
+@media (max-width: 1000px) {
+  .screen .charts {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .screen .charts > :first-child {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 760px) {
+  .screen {
+    padding: 16px;
+  }
+  .screen .workfield {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .screen .mast {
+    gap: 12px;
+  }
+  .screen .toolbar {
+    margin-left: auto;
+  }
+  .screen .terminal {
+    min-height: 360px;
+  }
+  .screen .library {
+    min-height: 320px;
+  }
+}
+@media (max-width: 440px) {
+  .screen .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .screen .charts > :first-child {
+    grid-column: auto;
+  }
+}
+.workspace .display-options {
+  position: relative;
+}
+.workspace .display-options .options-panel {
+  position: absolute;
+  right: 0;
+  top: 28px;
+  z-index: 8;
+  width: 240px;
+  padding: 16px;
+  background: #24292f;
+  border: 1px solid #535d69;
+  display: grid;
+  gap: 12px;
+}
