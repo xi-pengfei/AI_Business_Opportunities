@@ -816,3 +816,19 @@ time {
  .screen .terminal {height:440px;}
  .screen .library .table-scroll {height:340px;}
 }
+
+/* The spider is the scroll: the terminal surface carries no scrollbar of its own.
+   Keyboard and wheel scrolling still work for people; the visual layer is the spider. */
+.terminal-feed { scrollbar-width:none; }
+.terminal-feed::-webkit-scrollbar { display:none; }
+/* Leg grabs, silk hits and the plucked fragment live on the black surface. */
+.terminal-feed .wc-grab { outline:1.5px solid var(--wc,#3aa0ff); outline-offset:3px; border-radius:2px; }
+.spider-frag { position:fixed; z-index:80; pointer-events:none; max-width:420px; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; padding:2px 8px; color:#151217;
+  font:12px/1.7 "PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  will-change:transform,opacity; }
+
+/* Stable headers and native manual scrolling while records circulate. */
+.auto-scroll {overscroll-behavior:contain; scroll-behavior:auto;}
+.auto-scroll thead {position:sticky;top:0;z-index:2;background:#1c2127;}
+.auto-scroll:focus-visible {outline:2px solid #70c3ce;outline-offset:2px;}

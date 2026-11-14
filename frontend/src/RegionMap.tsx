@@ -7,7 +7,7 @@ import type { ChartSelection } from './Charts';
 import type { Snapshot } from './types';
 use([MapChart, ScatterChart, GeoComponent]);
 registerMap('china-provinces', china as Parameters<typeof registerMap>[1]);
-export function RegionMap({data, onSelect}: {data: Snapshot; onSelect: (r: ChartSelection) => void}) {
+export function RegionMap({data, onSelect}: {data: Snapshot; onSelect?: (r: ChartSelection) => void}) {
   const regions = data.regions || [];
   const features = china.features.filter(f => f.properties.name);
   const rows = features.map(f => {
@@ -16,7 +16,7 @@ export function RegionMap({data, onSelect}: {data: Snapshot; onSelect: (r: Chart
     return {name, short: region?.name || name, value: region?.count || 0,
       center: f.properties.center || f.properties.centroid};
   });
-  const open = (name: string) => onSelect({ start: Math.max(0, data.server_time - 90 * 86400), end: data.server_time,
+  const open = (name: string) => onSelect?.({ start: Math.max(0, data.server_time - 90 * 86400), end: data.server_time,
     region: name, label: `${name} · 地区信息` });
   return <section className="panel chart-panel map-panel">
     <h2>商机地图</h2>

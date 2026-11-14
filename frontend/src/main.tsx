@@ -5,6 +5,7 @@ import type { ChartSelection } from "./Charts";
 import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
 import {SourceFields, Information} from "./FlowPanels";
+import {AutoScroll} from "./AutoScroll";
 import { Spider } from "./Spider";
 import { clock, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
@@ -45,13 +46,14 @@ function App() {
   const activeCargo = useRef(false);
   const feedCursor = useRef<{after: number; after_id: string} | null>(null);
   const [terminalFeed, setTerminalFeed] = useState<Item[]>([]);
-  const terminalScroll = useRef<HTMLDivElement>(null);
   const nextCargo = useCallback(() => {
     const next = cargoQueue.current.shift() || null;
     activeCargo.current = !!next;
     currentCargo.current = next;
     setMoving(next);
-    if (next) setTerminalFeed([next]);
+    // The terminal is a rolling stream: newest entry on top, the spider walks
+    // up to it and the feed follows the spider instead of a scrollbar.
+    if (next) setTerminalFeed(old => [next, ...old.filter(i => i.id !== next.id)].slice(0, 5));
   }, []);
   const completeCargo = useCallback(() => {
     const cargo = currentCargo.current;
@@ -61,10 +63,6 @@ function App() {
     }
     nextCargo();
   }, [nextCargo]);
-  useEffect(() => {
-    const box = terminalScroll.current;
-    if (box && !currentCargo.current) box.scrollTop = 0;
-  }, [terminalFeed]);
   const seen = useRef(new Set<string>()),
     hydrated = useRef(false);
   const [streamState, setStreamState] = useState("连接中");
@@ -110,7 +108,7 @@ function App() {
       setConnectionError("");
       if (!hydrated.current) {
         feedCursor.current = {after: snapshot.server_time, after_id: ""};
-        setTerminalFeed(snapshot.items.slice(0, 1));
+        setTerminalFeed(snapshot.items.slice(0, 3));
         setLibrary(snapshot.items);
         setLanded(new Set(expandCargo(snapshot.items).map(cargoKey)));
       } else if (feedCursor.current && cargoQueue.current.length < 200) {
@@ -414,7 +412,7 @@ function App() {
           <div className="workfield">
             <section className="panel terminal">
               <h2>来源终端</h2>
-              <div className="terminal-feed" ref={terminalScroll}>
+              <div className="terminal-feed">
                 {terminalFeed.map(entry => <article className={`source-preview ${moving?.id === entry.id ? "cargo-source" : ""}`} key={entry.id}>
                   <SourceFields item={entry} moving={moving} landed={landed} />
                 </article>)}
@@ -459,6 +457,7 @@ function App() {
               </h2>
               <Information
                 items={library}
+                autoScroll={!moving}
                 open={(item) => {
                   if (item.url)
                     request(`/items/${item.id}`)
@@ -480,9 +479,9 @@ function App() {
           </div>
           <section className="panel assigned-library">
             <h2>已推送 / 认领 <small>{data.pushed_count} 条 · 已认领 {data.assigned_count} 条</small></h2>
-            <div className="table-scroll"><table><thead><tr><th>标题</th><th>认领人</th><th>推送时间</th><th>状态</th><th>认领时间</th></tr></thead>
+            <AutoScroll enabled label="已推送与认领记录"><table><thead><tr><th>标题</th><th>认领人</th><th>推送时间</th><th>状态</th><th>认领时间</th></tr></thead>
               <tbody>{data.assigned_items.map(i=><tr key={i.id}><td><button className="text-button" onClick={()=>request(`/items/${i.id}`).then(setDetail)}>{i.title}</button></td><td>{i.claimed_by || "—"}</td><td>{i.sent_at?clock(i.sent_at):'—'}</td><td>{i.delivery_status==='restored'?'已恢复，回执待核实':i.delivery_status==='claimed'?'已认领':'待认领'}</td><td>{i.claimed_at?clock(i.claimed_at):'—'}</td></tr>)}</tbody>
-            </table></div>
+            </table></AutoScroll>
             {!data.assigned_items.length && <p className="empty">{data.assignment_status==='not_configured'?'等待接入钉钉群 · 引用消息并 @机器人认领后发送下一条':'暂无已分配信息'}</p>}
           </section>
         </>

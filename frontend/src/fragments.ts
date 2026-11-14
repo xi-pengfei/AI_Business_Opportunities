@@ -13,9 +13,10 @@ export function expandCargo(items: Item[]): Cargo[] {
   return items.flatMap(item => {
     // A redacted item has no source evidence to animate.
     if (!item.fragments?.length) return [];
+    // The URL rides with the title: it is the same record's reference, so the
+    // spider never makes a separate journey just for it.
     const fields: Cargo[] = [{...item,field:'title',fragmentIndex:-1},
       ...item.fragments.map(f=>({...item,field:'fragments' as const,fragmentIndex:f.index}))];
-    if(item.url) fields.push({...item,field:'url',fragmentIndex:-2});
     if(item.published_at) fields.push({...item,field:'published_at',fragmentIndex:-3});
     fields.push({...item,field:'created_at',fragmentIndex:-4});
     return fields;
@@ -31,5 +32,6 @@ export function landFragment(library: Item[], cargo: Cargo): Item[] {
     next.fragments=[...(row.fragments || []).filter(f=>f.index!==fragment.index),fragment].sort((a,b)=>a.index-b.index);
   } else if(cargo.field==='created_at') next.created_at=cargo.created_at;
   else next[cargo.field]=cargo[cargo.field] as string;
+  if(cargo.field==='title' && cargo.url) next.url=cargo.url;
   return [next,...library.filter(i=>i.id!==cargo.id)].slice(0,30);
 }

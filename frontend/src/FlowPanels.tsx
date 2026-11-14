@@ -1,4 +1,5 @@
 import type React from 'react';
+import {AutoScroll} from './AutoScroll';
 import {clock, type Item} from './types';
 import {expandCargo,cargoKey,cargoText,fragmentColor,type Cargo} from './fragments';
 export function SourceFields({item,landed}: {item:Item;moving:Cargo|null;landed:Set<string>}) {
@@ -11,7 +12,7 @@ export function SourceFields({item,landed}: {item:Item;moving:Cargo|null;landed:
   return <div className="source-document">
     <h3>{title ? mark(title) : item.title}</h3>
     <div className="document-dates">
-      {published && <p>新闻时间　{mark(published)}</p>}
+      {published && <p>发布时间　{mark(published)}</p>}
       {captured && <p>采集时间　{mark(captured)}</p>}
     </div>
     <h4>原文信息</h4>
@@ -19,12 +20,12 @@ export function SourceFields({item,landed}: {item:Item;moving:Cargo|null;landed:
       const fragment=item.fragments?.find(f=>f.index===part.fragmentIndex);
       return <li key={cargoKey(part)}><p>{fragment?.before}{mark(part)}{fragment?.after}</p></li>;
     })}</ol>
-    {url && <><h4>来源引用</h4><p className="document-reference"><a href={item.url} target="_blank" rel="noopener noreferrer">{mark(url)}</a></p></>}
+    {item.url && <><h4>原始网址</h4><p className="document-reference"><a href={item.url} target="_blank" rel="noopener noreferrer">{url ? mark(url) : item.url}</a></p></>}
   </div>;
 }
-export function Information({ items, open }: { items: Item[]; open: (item: Item) => void }) {
-  return <><div className="table-scroll"><table className="fragment-table">
-    <thead><tr><th data-inbox-field="title">标题</th><th data-inbox-field="fragments">信息片</th><th data-inbox-field="url">原始网址</th><th data-inbox-field="published_at">新闻时间</th><th data-inbox-field="created_at">采集时间</th></tr></thead>
+export function Information({ items, open, autoScroll = false }: { items: Item[]; open: (item: Item) => void; autoScroll?: boolean }) {
+  return <><AutoScroll enabled={autoScroll} label="待推送信息库"><table className="fragment-table">
+    <thead><tr><th data-inbox-field="title">标题</th><th data-inbox-field="fragments">信息片</th><th data-inbox-field="url">原始网址</th><th data-inbox-field="published_at">发布时间</th><th data-inbox-field="created_at">采集时间</th></tr></thead>
     <tbody>{items.map(item => <tr key={item.id} data-library-item={item.id}>
       <td data-field="title"><button className="text-button" onClick={()=>open(item)}>{item.title || '—'}</button></td>
       <td data-field="fragments"><div className="fragment-tags">{(item.fragments || []).map(f => <button onClick={()=>open(item)}
@@ -32,5 +33,5 @@ export function Information({ items, open }: { items: Item[]; open: (item: Item)
       <td data-field="url">{item.url ? <a className="single-line" href={item.url} target="_blank" rel="noopener noreferrer">{item.url}</a> : '—'}</td>
       <td data-field="published_at">{item.published_at || '—'}</td><td data-field="created_at">{item.created_at?clock(item.created_at):'—'}</td>
     </tr>)}</tbody>
-  </table></div>{!items.length && <p className="empty">暂无待分配信息</p>}</>;
+  </table></AutoScroll>{!items.length && <p className="empty">暂无待分配信息</p>}</>;
 }

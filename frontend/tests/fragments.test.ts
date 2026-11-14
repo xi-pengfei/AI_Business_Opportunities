@@ -7,10 +7,11 @@ const record: Item = {id:'test-only',title:'测试夹具',url:'https://example.c
  {index:1,text:'建设统一的数据看板',start:16,end:27,before:'',after:''}]};
 test('fields land in their own columns, in order, without duplicate rows or fragments',()=>{
  const cargo = expandCargo([record]);
- assert.deepEqual(cargo.map(c=>c.field),['title','fragments','fragments','url','published_at','created_at']);
+ assert.deepEqual(cargo.map(c=>c.field),['title','fragments','fragments','published_at','created_at']);
  let library = landFragment([],cargo[0]);
  assert.equal(library[0].title,record.title);
- assert.equal(library[0].url,undefined);
+ // The URL rides with the title: same record's reference, no separate journey.
+ assert.equal(library[0].url,record.url);
  assert.equal(library[0].created_at,0);
  assert.deepEqual(library[0].fragments,[]);
  library=landFragment(library,cargo[1]); library=landFragment(library,cargo[1]);
