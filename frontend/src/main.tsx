@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { Charts } from "./Charts";
 import type { ChartSelection } from "./Charts";
-import { RegionMap } from "./RegionMap";
 import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
 import {SourceFields, Information} from "./FlowPanels";
@@ -367,7 +366,7 @@ function App() {
       )}
       {display && data && (
         <>
-          <div className="charts"><Charts data={data} onSelect={setChartSelection} onOpenItem={id=>{if(data.items.some(i=>i.url)) request(`/items/${id}`).then(setDetail).catch(e=>setError(e.message));}} /><RegionMap data={data} onSelect={setChartSelection} /></div>
+          <div className="charts"><Charts data={data} onSelect={setChartSelection} onOpenItem={id=>{if(data.items.some(i=>i.url)) request(`/items/${id}`).then(setDetail).catch(e=>setError(e.message));}} /></div>
           {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
             selection={chartSelection} request={request} close={() => setChartSelection(null)}
             open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}

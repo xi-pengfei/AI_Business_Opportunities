@@ -12,6 +12,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsCoreOption } from "echarts/core";
 import type { Snapshot } from "./types";
 import { clock } from "./types";
+import { RegionMap } from "./RegionMap";
 use([
   LineChart,
   BarChart,
@@ -82,7 +83,7 @@ export function Plot({ option, label, onPick }: { option: EChartsCoreOption; lab
   }, [onPick]);
   return <div className="plot" ref={ref} role="img" aria-label={label} />;
 }
-export function Charts({ data, onOpenItem }: { data: Snapshot; onSelect?: (range: ChartSelection) => void; onOpenItem?: (id:string)=>void }) {
+export function Charts({ data, onSelect, onOpenItem }: { data: Snapshot; onSelect: (range: ChartSelection) => void; onOpenItem?: (id:string)=>void }) {
   const history = data.collection_history || [];
   const axis = {
     axisLine: { show: false },
@@ -122,27 +123,6 @@ export function Charts({ data, onOpenItem }: { data: Snapshot; onSelect?: (range
   const colors = ["#70c3ce", "#9bbb92", "#e393b0", "#d8ba7c", "#a5a4d4"];
   return (
     <>
-      <section className="panel chart-panel">
-        <h2>
-          采集趋势 <small>累计 / 条</small>
-        </h2>
-        <Plot
-          label="近30分钟累计采集结果与去重归集信息"
-          option={{
-            xAxis: x,
-            yAxis: y,
-            legend: {
-              bottom: 0,
-              icon: "roundRect",
-              itemWidth: 16,
-              itemHeight: 3,
-              itemGap: 24,
-              textStyle: { color: "#a6afb9", fontSize: 12 },
-            },
-            series: [line("采集", 1, "#70c3ce"), line("归集", 2, "#e393b0")],
-          }}
-        />
-      </section>
       <section className="panel chart-panel">
         <h2>
           来源分布 <small>归集 / 条</small>
@@ -185,6 +165,28 @@ export function Charts({ data, onOpenItem }: { data: Snapshot; onSelect?: (range
           {!sources.length && <span className="chart-empty">等待来源归集</span>}
         </div>
       </section>
+      <section className="panel chart-panel">
+        <h2>
+          采集趋势 <small>累计 / 条</small>
+        </h2>
+        <Plot
+          label="近30分钟累计采集结果与去重归集信息"
+          option={{
+            xAxis: x,
+            yAxis: y,
+            legend: {
+              bottom: 0,
+              icon: "roundRect",
+              itemWidth: 16,
+              itemHeight: 3,
+              itemGap: 24,
+              textStyle: { color: "#a6afb9", fontSize: 12 },
+            },
+            series: [line("采集", 1, "#70c3ce"), line("归集", 2, "#e393b0")],
+          }}
+        />
+      </section>
+      <RegionMap data={data} onSelect={onSelect} />
       <section className="panel chart-panel">
         <h2>任务积压 <small>未认领 {data.backlog_count} 条</small></h2>
         <Plot label="每个圆点是一条未认领信息；横轴入库时间，纵轴信息片数量，圆点越大等待越久。点击查看原文。"
