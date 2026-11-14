@@ -60,3 +60,63 @@ def chart_facts(db, demo, start):
         .group_by(Document.provider)
     ).all()
     return {"collection_history": history, "source_counts": dict(sources)}
+
+
+def collector_status(db, demo, role):
+    from scout.models import Rule
+
+    output = []
+    for rule in db.scalars(
+        select(Rule).where(
+            Rule.enabled.is_(True), Rule.provider == "demo" if demo else Rule.provider != "demo"
+        )
+    ):
+        latest = db.scalar(
+            select(Task)
+            .where(Task.rule_id == rule.id, Task.kind == "search")
+            .order_by(Task.created_at.desc())
+            .limit(1)
+        )
+        children = (
+            dict(
+                db.execute(
+                    select(Task.status, func.count())
+                    .where(Task.parent_id == latest.id)
+                    .group_by(Task.status)
+                ).all()
+            )
+            if latest
+            else {}
+        )
+        total = sum(children.values())
+        done = sum(children.get(s, 0) for s in ("succeeded", "failed", "action_required"))
+        state = latest.status if latest else "queued"
+        if state == "succeeded":
+            state = "cleaning" if done < total else "next_batch"
+        output.append(
+            {
+                "id": rule.id,
+                "name": rule.name if role == "admin" else "采集规则",
+                "query": latest.payload.get("query", "") if latest and role == "admin" else "",
+                "state": state,
+                "error_code": latest.error_code if latest else None,
+                "next_run_at": rule.next_run_at,
+                "continuous": rule.interval_seconds == 0,
+                "done": done,
+                "total": total,
+                "duplicates": sum(
+                    1
+                    for result in db.scalars(select(Task.result).where(Task.parent_id == latest.id))
+                    if result.get("duplicate")
+                )
+                if latest
+                else 0,
+                "rounds": db.scalar(
+                    select(func.count())
+                    .select_from(Task)
+                    .where(Task.rule_id == rule.id, Task.kind == "search")
+                ),
+                "max_results": rule.max_results,
+            }
+        )
+    return output

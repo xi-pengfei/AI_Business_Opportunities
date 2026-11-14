@@ -655,3 +655,28 @@ time {
   display: grid;
   gap: 12px;
 }
+.collector-strip {
+  margin: 0 0 16px;
+  border: 1px solid #353b43;
+  background: #1c2025;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #a6afb9;
+}
+.collector-strip section {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.collector-strip strong {
+  color: #96cfd4;
+  font-weight: 500;
+}
+.collector-strip small {
+  margin-left: auto;
+}
+.collector-strip progress {
+  width: 100px;
+  accent-color: #70c3ce;
+}

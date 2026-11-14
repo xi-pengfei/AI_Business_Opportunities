@@ -13,7 +13,7 @@ function App() {
   const [page, setPage] = useState(
     location.pathname === "/display" ? "display" : "rules",
   );
-  const [demo, setDemo] = useState(false);
+  const demo = false;
   const [data, setData] = useState<Snapshot | null>(null);
   const [rules, setRules] = useState<Rule[]>([]),
     [tasks, setTasks] = useState<Task[]>([]),
@@ -247,37 +247,18 @@ function App() {
     <main className={display ? "screen" : "workspace"}>
       <header className="mast">
         <h1>AI商机智能体</h1>
-        <span className="mode">{demo ? "演示数据" : "真实数据"}</span>
         <div className="toolbar">
-          <details className="display-options">
-            <summary>显示设置</summary>
-            <div className="options-panel">
-              <label>
-                数据范围
-                <select
-                  value={String(demo)}
-                  onChange={(e) => {
-                    setDemo(e.target.value === "true");
-                    setError("");
-                  }}
-                >
-                  <option value="false">真实数据</option>
-                  <option value="true">演示数据</option>
-                </select>
-              </label>
-              <button onClick={() => navigate(display ? "rules" : "display")}>
-                {display ? "管理台" : "展示大屏"}
-              </button>
-              <button
-                onClick={() => {
-                  setToken("");
-                  setData(null);
-                }}
-              >
-                退出
-              </button>
-            </div>
-          </details>
+          <button onClick={() => navigate(display ? "rules" : "display")}>
+            {display ? "管理台" : "展示大屏"}
+          </button>
+          <button
+            onClick={() => {
+              setToken("");
+              setData(null);
+            }}
+          >
+            退出
+          </button>
           {display && (
             <button
               onClick={() =>
@@ -322,6 +303,46 @@ function App() {
       {display && data && (
         <>
           <Charts data={data} />
+          <div className="collector-strip">
+            {data.collectors?.length ? (
+              data.collectors.map((c) => (
+                <section key={c.id}>
+                  <strong>
+                    {(
+                      {
+                        queued: "准备搜索",
+                        running: "正在搜索",
+                        cleaning: "清洗入库",
+                        next_batch: "继续下一批",
+                        retry_wait: "失败重试中",
+                        action_required: "等待服务恢复",
+                        failed: "本批失败",
+                      } as Record<string, string>
+                    )[c.state] || c.state}
+                  </strong>
+                  <span>{c.query || c.name}</span>
+                  <small>
+                    第 {c.rounds} 批
+                    {c.total > 0
+                      ? ` · 已处理 ${c.done} / ${c.total} · 重复 ${c.duplicates}`
+                      : ""}
+                  </small>
+                  {c.total > 0 && (
+                    <progress
+                      aria-label="本批处理进度"
+                      value={c.done}
+                      max={c.total}
+                    />
+                  )}
+                  {c.error_code && (
+                    <small>{errors[c.error_code] || c.error_code}</small>
+                  )}
+                </section>
+              ))
+            ) : (
+              <span>采集已停止</span>
+            )}
+          </div>
           <div className="workfield">
             <section className="panel terminal">
               <h2>来源终端</h2>
@@ -341,13 +362,17 @@ function App() {
                 </div>
               )}
               <p>
-                {data.task_counts.running
-                  ? "正在执行采集任务"
-                  : data.task_counts.queued
-                    ? "任务排队中"
-                    : data.task_counts.action_required
-                      ? "有任务等待配置，其他来源可继续运行"
-                      : "等待下一轮任务"}
+                {data.collectors?.some((c) => c.state === "running")
+                  ? "正在搜索新来源"
+                  : data.collectors?.some((c) => c.state === "cleaning")
+                    ? "正在清洗本批信息"
+                    : data.collectors?.some(
+                          (c) => c.state === "action_required",
+                        )
+                      ? "采集服务等待授权或额度恢复"
+                      : data.collectors?.length
+                        ? "自动衔接下一批"
+                        : "采集已停止"}
               </p>
               {data.events.slice(0, 3).map((e) => (
                 <div className="log" key={e.id}>
@@ -382,7 +407,15 @@ function App() {
                 }}
               />
             </section>
-            <Spider item={moving} />
+            <Spider
+              item={moving}
+              searching={
+                connected &&
+                !!data.collectors?.some((c) =>
+                  ["queued", "running", "cleaning"].includes(c.state),
+                )
+              }
+            />
           </div>
           <section className="panel handoff">
             <h2>分配与接收</h2>
@@ -427,13 +460,13 @@ function App() {
                       name: fd.get("name"),
                       query: fd.get("query"),
                       provider: fd.get("provider"),
-                      interval_seconds: Number(fd.get("interval")) * 60,
-                      max_results: Number(fd.get("max")),
-                      enabled: false,
+                      interval_seconds: 0,
+                      max_results: 20,
+                      enabled: true,
                     }),
                   });
                   form.reset();
-                }, "规则已保存为草稿，可以先执行一次验证结果。");
+                }, "规则已开始连续采集，可随时停止。");
               }}
             >
               <label>
@@ -446,7 +479,7 @@ function App() {
                 />
               </label>
               <label>
-                搜索关键词
+                搜索关键词（每行一组，自动轮转）
                 <textarea
                   name="query"
                   required
@@ -463,37 +496,12 @@ function App() {
                       ? "（待配置密钥）"
                       : ""}
                   </option>
-                  {providers?.demo.enabled && (
-                    <option value="demo">演示适配器（不会搜索网络）</option>
-                  )}
                 </select>
               </label>
-              <div className="fields">
-                <label>
-                  执行间隔（分钟）
-                  <input
-                    name="interval"
-                    type="number"
-                    min={5}
-                    max={43200}
-                    defaultValue={60}
-                    required
-                  />
-                </label>
-                <label>
-                  每次最多结果
-                  <input
-                    name="max"
-                    type="number"
-                    min={1}
-                    max={10}
-                    defaultValue={5}
-                    required
-                  />
-                </label>
-              </div>
-              <button disabled={busy}>保存草稿</button>
-              <p className="hint">保存不触发采集；启用后按间隔持续运行。</p>
+              <button disabled={busy}>保存并开始采集</button>
+              <p className="hint">
+                自动轮转关键词并扩展地区；停止后完成当前批次，不再开始下一批。
+              </p>
             </form>
           </section>
           <section className="panel">
@@ -501,55 +509,62 @@ function App() {
             {!rules.length ? (
               <p className="empty">还没有规则。从左侧添加第一组关键词。</p>
             ) : (
-              rules.map((r) => (
-                <article className="rule" key={r.id}>
-                  <div>
-                    <h3>{r.name}</h3>
-                    <p>{r.query}</p>
-                    <small>
-                      {r.provider === "demo" ? "演示" : "Tavily"} · 每{" "}
-                      {r.interval_seconds / 60} 分钟 ·{" "}
-                      {r.enabled ? "已启用" : "草稿 / 已停用"}
-                    </small>
-                  </div>
-                  <div className="actions">
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        action(
-                          () =>
-                            request(`/rules/${r.id}/run`, {
-                              method: "POST",
-                              headers: {
-                                "Idempotency-Key": crypto.randomUUID(),
-                              },
-                            }),
-                          "任务已进入队列；请在对应数据范围查看任务。",
-                        )
-                      }
-                    >
-                      执行一次
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        action(
-                          () =>
-                            request(`/rules/${r.id}`, {
-                              method: "PATCH",
-                              body: JSON.stringify({ enabled: !r.enabled }),
-                            }),
-                          r.enabled
-                            ? "已停止后续调度，已入队任务继续执行。"
-                            : "规则已启用。",
-                        )
-                      }
-                    >
-                      {r.enabled ? "停用" : "启用"}
-                    </button>
-                  </div>
-                </article>
-              ))
+              rules
+                .filter((r) => r.provider !== "demo")
+                .map((r) => (
+                  <article className="rule" key={r.id}>
+                    <div>
+                      <h3>{r.name}</h3>
+                      <p>{r.query}</p>
+                      <small>
+                        {r.interval_seconds === 0
+                          ? "连续采集"
+                          : `每 ${r.interval_seconds / 60} 分钟`}{" "}
+                        · {r.enabled ? "运行中" : "已停止"}
+                      </small>
+                    </div>
+                    <div className="actions">
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          action(
+                            () =>
+                              request(`/rules/${r.id}/run`, {
+                                method: "POST",
+                                headers: {
+                                  "Idempotency-Key": crypto.randomUUID(),
+                                },
+                              }),
+                            "任务已进入队列。",
+                          )
+                        }
+                      >
+                        执行一次
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          action(
+                            () =>
+                              request(`/rules/${r.id}`, {
+                                method: "PATCH",
+                                body: JSON.stringify({
+                                  enabled: !r.enabled,
+                                  interval_seconds: 0,
+                                  max_results: 20,
+                                }),
+                              }),
+                            r.enabled
+                              ? "已停止后续调度，已入队任务继续执行。"
+                              : "规则已启用。",
+                          )
+                        }
+                      >
+                        {r.enabled ? "停止" : "开始采集"}
+                      </button>
+                    </div>
+                  </article>
+                ))
             )}
           </section>
         </div>
@@ -609,7 +624,7 @@ function App() {
               </tbody>
             </table>
           </div>
-          {!tasks.length && <p className="empty">当前数据范围尚无任务。</p>}
+          {!tasks.length && <p className="empty">尚无任务。</p>}
         </section>
       )}
       {!display && page === "information" && (

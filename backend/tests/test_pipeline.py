@@ -199,3 +199,45 @@ def test_display_queue_counts_retry(database):
     service.finish(task_id, token, error=ProviderError("temporary"))
     with database() as db:
         assert chart_facts(db, True, start)["collection_history"][-1][3] == 1
+
+
+def test_continuous_rotates_queries_waits_for_ingest_and_stops(database):
+    with database.begin() as db:
+        rule = Rule(
+            name="continuous",
+            query="ERP\nMES",
+            provider="demo",
+            enabled=True,
+            interval_seconds=0,
+            max_results=20,
+            next_run_at=0,
+        )
+        db.add(rule)
+        db.flush()
+        rid = rule.id
+    service.schedule_due()
+    with database() as db:
+        first = db.scalar(select(Task).where(Task.kind == "search"))
+        tid = first.id
+        assert first.payload["query"] == "ERP"
+    service.execute(tid)
+    with database.begin() as db:
+        db.get(Rule, rid).next_run_at = time.time() - 1
+    service.schedule_due()
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(Task).where(Task.kind == "search")) == 1
+        child = db.scalar(select(Task.id).where(Task.parent_id == tid))
+    service.execute(child)
+    service.schedule_due()
+    with database() as db:
+        searches = list(
+            db.scalars(select(Task).where(Task.kind == "search").order_by(Task.created_at))
+        )
+        assert [t.payload["query"] for t in searches] == ["ERP", "MES"]
+    drain(database, searches[-1].id)
+    with database.begin() as db:
+        db.get(Rule, rid).enabled = False
+        db.get(Rule, rid).next_run_at = time.time() - 1
+    service.schedule_due()
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(Task).where(Task.kind == "search")) == 2

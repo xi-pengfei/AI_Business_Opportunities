@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 
 from scout.config import settings
 from scout.db import Session
-from scout.display import chart_facts
+from scout.display import chart_facts, collector_status
 from scout.models import Attempt, Document, Event, Item, Outbox, Rule, Task
 from scout.service import emit, start_rule
 
@@ -48,8 +48,8 @@ class RuleInput(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     query: str = Field(min_length=1, max_length=500)
     provider: Literal["tavily", "demo"] = "tavily"
-    interval_seconds: int = Field(default=3600, ge=300, le=2592000)
-    max_results: int = Field(default=5, ge=1, le=10)
+    interval_seconds: int = Field(default=0, ge=0, le=2592000)
+    max_results: int = Field(default=20, ge=1, le=20)
     enabled: bool = False
 
     @field_validator("name", "query")
@@ -62,6 +62,16 @@ class RuleInput(BaseModel):
 
 class EnableInput(BaseModel):
     enabled: bool
+    interval_seconds: int | None = Field(default=None, ge=0, le=2592000)
+    max_results: int | None = Field(default=None, ge=1, le=20)
+    query: str | None = Field(default=None, min_length=1, max_length=500)
+
+    @field_validator("query")
+    @classmethod
+    def nonblank_query(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("关键词不能为空")
+        return value
 
 
 @app.get("/health/live")
@@ -113,6 +123,10 @@ def enable_rule(rule_id: str, body: EnableInput):
         if not rule:
             raise HTTPException(404, "规则不存在")
         rule.enabled = body.enabled
+        for field in ("interval_seconds", "max_results", "query"):
+            value = getattr(body, field)
+            if value is not None:
+                setattr(rule, field, value)
         rule.version += 1
         if body.enabled:
             rule.next_run_at = time.time()
@@ -246,6 +260,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             ),
             "trend": buckets,
             **chart_facts(db, demo, start),
+            "collectors": collector_status(db, demo, current),
             "items": [
                 record(i)
                 if current == "admin"

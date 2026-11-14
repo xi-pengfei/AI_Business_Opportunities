@@ -2,7 +2,7 @@ import hashlib
 import re
 import time
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from scout.config import settings
 from scout.db import Session
@@ -36,10 +36,60 @@ def enqueue(db, *, kind, payload, key, rule=None, parent=None):
 
 
 def start_rule(db, rule, key):
+    queries = [line.strip() for line in rule.query.splitlines() if line.strip()]
+    rounds = (
+        db.scalar(
+            select(func.count())
+            .select_from(Task)
+            .where(Task.rule_id == rule.id, Task.kind == "search")
+        )
+        or 0
+    )
+    # Explore distinct geographic scopes before revisiting the original query.
+    scopes = [
+        "",
+        "上海",
+        "江苏",
+        "浙江",
+        "广东",
+        "山东",
+        "北京",
+        "四川",
+        "湖北",
+        "陕西",
+        "福建",
+        "安徽",
+        "河南",
+        "湖南",
+        "河北",
+        "重庆",
+        "天津",
+        "江西",
+        "山西",
+        "辽宁",
+        "云南",
+        "广西",
+        "贵州",
+        "内蒙古",
+        "黑龙江",
+        "吉林",
+        "甘肃",
+        "宁夏",
+        "新疆",
+        "海南",
+        "青海",
+        "西藏",
+    ]
+    scope = scopes[(rounds // len(queries)) % len(scopes)] if rule.interval_seconds == 0 else ""
+    query = " ".join(part for part in (queries[rounds % len(queries)], scope) if part)
     return enqueue(
         db,
         kind="search",
-        payload={"query": rule.query, "provider": rule.provider, "max_results": rule.max_results},
+        payload={
+            "query": query,
+            "provider": rule.provider,
+            "max_results": rule.max_results,
+        },
         key=key,
         rule=rule,
     )
@@ -190,13 +240,21 @@ def schedule_due():
             active = db.scalar(
                 select(Task.id).where(
                     Task.rule_id == rule.id,
-                    Task.kind == "search",
-                    Task.status.in_(["queued", "running", "retry_wait", "action_required"]),
+                    Task.status.in_(["queued", "running", "retry_wait"]),
                 )
             )
+            blocked = db.scalar(
+                select(Task.id).where(
+                    Task.rule_id == rule.id, Task.kind == "search", Task.status == "action_required"
+                )
+            )
+            if blocked:
+                continue
+            if active:
+                continue
             if not active:
                 start_rule(db, rule, f"schedule:{rule.id}:{rule.version}:{rule.next_run_at}")
-            rule.next_run_at = time.time() + rule.interval_seconds
+            rule.next_run_at = time.time() + max(3, rule.interval_seconds)
 
 
 def recover_expired():

@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { Item } from "./types";
 // Visual delivery only: the item has already been committed by the backend.
-export function Spider({ item }: { item: Item | null }) {
+export function Spider({
+  item,
+  searching = false,
+}: {
+  item: Item | null;
+  searching?: boolean;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const delivered = useRef<string | null>(null);
   const [size, setSize] = useState("");
   useEffect(() => {
     const parent = ref.current?.parentElement;
@@ -14,6 +21,8 @@ export function Spider({ item }: { item: Item | null }) {
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
+    const cargo = item && item.id !== delivered.current ? item : null;
+    if (cargo) delivered.current = cargo.id;
     const canvas = ref.current;
     if (!canvas || matchMedia("(prefers-reduced-motion: reduce)").matches)
       return;
@@ -35,11 +44,13 @@ export function Spider({ item }: { item: Item | null }) {
       if (!ctx || !canvas) return;
       if (!start) start = now;
       const elapsed = (now - start) / 1000;
-      const p = item ? Math.min(1, elapsed / 7) : 0;
+      const p = cargo ? Math.min(1, elapsed / 7) : 0;
       const travel =
-          p > 0.82
-            ? Math.max(0, (1 - p) / 0.18)
-            : Math.max(0, Math.min(1, (p - 0.15) / 0.6)),
+          (!cargo || p >= 1) && searching
+            ? (1 - Math.cos(elapsed * 0.7)) * 0.12
+            : p > 0.82
+              ? Math.max(0, (1 - p) / 0.18)
+              : Math.max(0, Math.min(1, (p - 0.15) / 0.6)),
         q = travel * travel * (3 - 2 * travel),
         x = from.x + (to.x - from.x) * q,
         y = from.y + (to.y - from.y) * q;
@@ -102,8 +113,8 @@ export function Spider({ item }: { item: Item | null }) {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      if (item && p > 0.12 && p < 0.82) {
-        const message = (item!.text || item!.title).slice(0, 23);
+      if (cargo && p > 0.12 && p < 0.82) {
+        const message = (cargo!.text || cargo!.title).slice(0, 23);
         ctx.font = "12px system-ui";
         const tw = Math.min(ctx.measureText(message).width + 16, r.width - 16);
         ctx.fillStyle = "#70c3ce";
@@ -111,13 +122,13 @@ export function Spider({ item }: { item: Item | null }) {
         ctx.fillStyle = "#10181d";
         ctx.fillText(message, Math.min(x, r.width - tw) + 8, y + 41, tw - 16);
       }
-      if (item && p < 1) raf = requestAnimationFrame(draw);
+      if ((cargo && p < 1) || searching) raf = requestAnimationFrame(draw);
     }
     raf = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(raf);
       ctx.clearRect(0, 0, r.width, r.height);
     };
-  }, [item, size]);
+  }, [item, size, searching]);
   return <canvas className="spider" ref={ref} aria-hidden="true" />;
 }

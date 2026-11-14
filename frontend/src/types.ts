@@ -15,6 +15,20 @@ export type Execution = {
   is_demo: boolean;
 };
 export type Snapshot = {
+  collectors: {
+    id: string;
+    name: string;
+    query: string;
+    state: string;
+    next_run_at: number;
+    continuous: boolean;
+    done: number;
+    total: number;
+    duplicates: number;
+    rounds: number;
+    max_results: number;
+    error_code: string | null;
+  }[];
   mode: string;
   server_time: number;
   cursor: number;
