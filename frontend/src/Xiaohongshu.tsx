@@ -60,7 +60,7 @@ export function Xiaohongshu({request}:{request:Request}) {
       }}><label htmlFor="xhs-query">搜索关键词（每行一组）</label><textarea key={rules[0]?.id||'new'} id="xhs-query" name="query" required maxLength={500} defaultValue={rules[0]?.query||defaults}/>
         <button type="submit" disabled={busy}>保存并持续采集</button>
       </form>}
-      <p className="hint">保留近30天提出软件或信息化需求的帖子，过滤接单广告和教程。去重后：来源终端 → 蜘蛛搬运 → 信息库。暂不自动推送钉钉。</p>
+      <p className="hint">保留近30天提出软件或信息化需求的帖子，过滤接单广告和教程。去重后：来源终端 → 蜘蛛搬运 → 信息库。入库后按商机流程推送钉钉，等待群成员认领。</p>
       {rules?.map(r=>{const c=collectors.find(c=>c.id===r.id);return <article className="rule" key={r.id}><div><h3>{r.name}</h3><p>{!r.enabled?'已停止':c?.error_code?(errors[c.error_code]||c.error_code):c?.state==='running'?'正在搜索':c?.state==='cleaning'?'正在读取笔记':'等待下一批'}</p>{c?.query&&<small>当前搜索：{c.query}</small>}</div><button disabled={busy} onClick={()=>action(async()=>{await request(`/rules/${r.id}`,{method:'PATCH',body:JSON.stringify({enabled:!r.enabled})});setRevision(n=>n+1);})}>{r.enabled?'停止采集':'继续采集'}</button></article>})}
     </section>
   </div>;

@@ -49,15 +49,17 @@ class DingTalk:
 
     def send(self, item, delivery):
         captured = datetime.fromtimestamp(item.created_at, ZONE).strftime("%Y-%m-%d %H:%M:%S")
+        news = item.source_type == "customer_watch"
         content = "\n".join(
             [
-                f"商机编号：BO-{delivery.claim_code}",
+                "客户监测资讯" if news else f"商机编号：BO-{delivery.claim_code}",
                 item.title[:500],
+                "信息来源：" + {"social_demand": "小红书", "customer_watch": "客户监测"}.get(item.source_type, "网络商机"),
                 *[f["text"] for f in item.fragments],
                 "原始网址：" + item.url[:2500],
-                "新闻时间：" + (item.published_at or "未提供"),
+                "发布时间：" + (item.published_at or "未提供"),
                 "采集时间：" + captured,
-                "认领方式：引用本消息并 @AI商机智能体 回复 收到 / 我来跟进。若引用信息未传入，请回复：收到 BO-"
+                "客户动态播报，无需认领。" if news else "认领方式：引用本消息并 @AI商机智能体 回复 收到 / 我来跟进。若引用信息未传入，请回复：收到 BO-"
                 + str(delivery.claim_code),
             ]
         )
@@ -114,7 +116,7 @@ def tick(config, transport, sessions=Session, now=None):
             gate.current_item_id = None
         item = db.scalar(
             pending_items(False, now)
-            .where(Item.information_kind == "opportunity", ~Item.id.in_(select(Delivery.item_id)))
+            .where(Item.information_kind.in_(("opportunity", "demand")), ~Item.id.in_(select(Delivery.item_id)))
             .order_by(Item.created_at, Item.id)
             .limit(1)
         )
@@ -149,6 +151,47 @@ def tick(config, transport, sessions=Session, now=None):
         return delivery.status
 
 
+
+def tick_news(config, transport, sessions=Session, now=None):
+    """Broadcast customer news independently of the business claim gate."""
+    from scout.display import unique_items
+    from scout.retention import current_window
+    now = now or time.time()
+    if not config.dingtalk_enabled or not configured(config):
+        return "not_configured"
+    transport.authenticate()
+    with sessions() as db:
+        gate = db.scalar(select(DeliveryGate).where(DeliveryGate.id == "customer_news").with_for_update())
+        if gate is None:
+            raise RuntimeError("delivery_migration_required")
+        if gate.current_item_id:
+            current = db.get(Delivery, gate.current_item_id)
+            if current and current.status == "sending" and now - current.created_at <= 90:
+                return "sending"
+            if current and current.status == "sending":
+                current.status, current.error_code = "unknown", "interrupted_send"
+            gate.current_item_id = None
+        item = db.scalar(unique_items(False).where(Item.source_type == "customer_watch", *current_window(now),
+                         ~Item.id.in_(select(Delivery.item_id))).order_by(Item.created_at, Item.id).limit(1))
+        if item is None:
+            db.commit()
+            return "empty"
+        delivery = Delivery(item_id=item.id, conversation_id=config.dingtalk_conversation_id,
+                            robot_code=config.dingtalk_robot_code, recipient=config.dingtalk_group_name,
+                            status="sending", created_at=now, next_check_at=now)
+        db.add(delivery)
+        gate.current_item_id = item.id
+        db.commit()
+        try:
+            delivery.message_id = transport.send(item, delivery)
+            delivery.sent_at, delivery.status = now, "sent"
+        except Exception:
+            delivery.status, delivery.error_code = "unknown", "send_result_unknown"
+        # Unknown deliveries stay recorded and are never automatically resent.
+        gate.current_item_id = None
+        db.commit()
+        return delivery.status
+
 def main():
     config = settings()
     transport = DingTalk(config)
@@ -157,6 +200,10 @@ def main():
             tick(config, transport)
         except Exception as exc:
             logging.warning("notification tick failed (%s)", type(exc).__name__)
+        try:
+            tick_news(config, transport)
+        except Exception as exc:
+            logging.warning("customer notification tick failed (%s)", type(exc).__name__)
         time.sleep(5)
 
 

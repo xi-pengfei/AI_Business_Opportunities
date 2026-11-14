@@ -5,8 +5,8 @@ import type { ChartSelection } from "./Charts";
 import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
 import {SourceFields, Information} from "./FlowPanels";
-import {AutoScroll} from "./AutoScroll";
 import { Xiaohongshu } from "./Xiaohongshu";
+import { FollowupPanels } from "./FollowupPanels";
 import { Customers } from "./Customers";
 import { Spider } from "./Spider";
 import { clock, status, errors } from "./types";
@@ -104,8 +104,15 @@ function App() {
       );
       if (activeView.current !== viewKey) return;
       setData(snapshot);
-      assignedIds.current = new Set(snapshot.assigned_items.map(i=>i.id));
-      setLibrary(old=>old.filter(i=>!assignedIds.current.has(i.id)));
+      assignedIds.current = new Set([...snapshot.assigned_items, ...(snapshot.customer_items || [])].map(i=>i.id));
+      const validIds = new Set(snapshot.active_item_ids);
+      setLibrary(old=>old.filter(i=>validIds.has(i.id) && !assignedIds.current.has(i.id)));
+      setTerminalFeed(old=>old.filter(i=>validIds.has(i.id)));
+      cargoQueue.current = cargoQueue.current.filter(i=>validIds.has(i.id));
+      if (currentCargo.current && !validIds.has(currentCargo.current.id)) {
+        assignedIds.current.add(currentCargo.current.id);
+        nextCargo();
+      }
       setConnected(true);
       setConnectionError("");
       if (!hydrated.current) {
@@ -469,6 +476,7 @@ function App() {
               </h2>
               <Information
                 items={library}
+                lifecycle={false}
                 autoScroll={!moving}
                 open={(item) => {
                   if (item.url)
@@ -489,14 +497,7 @@ function App() {
               }
             />
           </div>
-          <section className="panel assigned-library">
-            <h2>已推送 / 认领 <small>{data.pushed_count} 条 · 已认领 {data.assigned_count} 条</small></h2>
-            <AutoScroll enabled label="已推送与认领记录"><table><thead><tr><th>标题</th><th>认领人</th><th>推送时间</th><th>状态</th><th>认领时间</th></tr></thead>
-              <tbody>{data.assigned_items.map(i=><tr key={i.id}><td><button className="text-button" onClick={()=>request(`/items/${i.id}`).then(setDetail)}>{i.title}</button></td><td>{i.claimed_by || "—"}</td><td>{i.sent_at?clock(i.sent_at):'—'}</td><td>{i.delivery_status==='restored'?'已恢复，回执待核实':i.delivery_status==='claimed'?'已认领':'待认领'}</td><td>{i.claimed_at?clock(i.claimed_at):'—'}</td></tr>)}</tbody>
-            </table></AutoScroll>
-            {!data.assigned_items.length && <p className="empty">{data.assignment_status==='not_configured'?'等待接入钉钉群 · 引用消息并 @机器人认领后发送下一条':'暂无已分配信息'}</p>}
-          </section>
-          <Customers request={request} />
+          <FollowupPanels data={data} open={item=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
         </>
       )}
       {!data && <div className="empty">正在读取运行状态…</div>}

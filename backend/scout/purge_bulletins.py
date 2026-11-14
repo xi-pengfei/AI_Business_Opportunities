@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from scout.db import Session
 from scout.models import Delivery, Document, Item, RemovedEvidence, Task
-from scout.policies import describe_public_tender
+from scout.policies import describe_public_tender, describe_social_demand
 from scout.providers import canonical_url, clean_text
 
 
@@ -19,12 +19,13 @@ def purge(sessions=Session):
     with sessions.begin() as db:
         delivered = set(db.scalars(select(Delivery.item_id)))
         removed_ids = set()
-        for item in db.scalars(select(Item).where(Item.is_demo.is_(False), Item.source_type == "public_tender")).all():
+        for item in db.scalars(select(Item).where(Item.is_demo.is_(False), Item.source_type.in_(("public_tender", "social_demand")))).all():
             if item.information_kind != "bulletin" or item.id in delivered:
                 continue
             doc = db.get(Document, item.document_id)
             key = hashlib.sha256(canonical_url(doc.url).encode()).hexdigest()
-            db.merge(RemovedEvidence(url_hash=key, content_hash=doc.content_hash))
+            if item.source_type == "public_tender":
+                db.merge(RemovedEvidence(url_hash=key, content_hash=doc.content_hash))
             removed_ids.add(item.id)
             db.delete(item)
             db.flush()
@@ -35,15 +36,16 @@ def purge(sessions=Session):
         for task in db.scalars(select(Task).where(Task.is_demo.is_(False), Task.kind == "ingest",
                                                  Task.status.in_(("succeeded", "failed", "action_required")))).all():
             p = task.payload
-            if p.get("source_type", "public_tender") != "public_tender":
+            if p.get("source_type", "public_tender") not in ("public_tender", "social_demand"):
                 continue
             raw = p.get("raw_content")
             if not raw or task.result.get("item_id") in delivered:
                 continue
             removed = task.result.get("item_id") in removed_ids or hashlib.sha256(clean_text(raw).encode()).hexdigest() in hashes
-            bulletin = describe_public_tender(p.get("title", ""), raw, p.get("published_at"))["information_kind"] == "bulletin"
+            policy = describe_social_demand if p.get("source_type") == "social_demand" else describe_public_tender
+            bulletin = policy(p.get("title", ""), raw, p.get("published_at"))["information_kind"] == "bulletin"
             if removed or bulletin:
-                task.payload = discarded_payload(p.get("provider"), "removed_information")
+                task.payload = {**discarded_payload(p.get("provider"), "removed_information"), "source_type": p.get("source_type", "public_tender"), **({"note_id": p["note_id"]} if p.get("note_id") else {})}
                 task.result = {"discarded": True, "reason": "removed_information"}
                 task.status = "succeeded"
                 counts["payloads_removed"] += 1

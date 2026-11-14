@@ -1,6 +1,13 @@
 export type Fragment = { index: number; text: string; start: number; end: number; before: string; after: string };
 export type Item = {
   id: string;
+  source_type?: string;
+  source_name?: string;
+  business_status?: string;
+  requires_claim?: boolean;
+  sent_at?: number;
+  claimed_by?: string;
+  claimed_at?: number;
   title: string;
   fragments?: Fragment[];
   category?: string;
@@ -22,11 +29,13 @@ export type Execution = {
   is_demo: boolean;
 };
 export type Snapshot = {
+  active_item_ids: string[];
   pending_count: number;
   backlog_count: number;
   pushed_count: number;
   assigned_count: number;
   assignment_status: string;
+  customer_items: Item[];
   assigned_items: (Item & {recipient: string; delivery_status: string; sent_at: number; read_at?: number; claimed_by?:string; claimed_at?:number})[];
   backlog_points: {id:string; created_at:number; waiting_hours:number; fragments:number; category:string}[];
   delivery: { available: boolean; sent: number | null };
@@ -119,3 +128,7 @@ export const errors: Record<string, string> = {
 };
 export const clock = (t: number) =>
   new Date(t * 1000).toLocaleTimeString("zh-CN", { hour12: false });
+
+export const sourceName = (i: Item) => i.source_name || ({public_tender:'网络商机',social_demand:'小红书',customer_watch:'客户监测'} as Record<string,string>)[i.source_type || 'public_tender'] || '网络商机';
+export const businessState = (i: Item) => ({collected:'已采集',waiting_claim:'待认领',claimed:'已认领',sent:'已推送',sending:'推送中',unknown:'推送结果待核实',failed:'推送失败',restored:'已恢复，回执待核实'} as Record<string,string>)[i.business_status || 'collected'] || '已采集';
+export const fullTime = (t?:number) => t ? new Date(t*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '—';

@@ -7,7 +7,7 @@ import time
 from sqlalchemy import select
 
 from scout.db import Session
-from scout.models import Delivery
+from scout.models import Delivery, Item
 
 CODE = re.compile(r"BO-([a-fA-F0-9]{12})", re.I)
 AFFIRMATIVE = {
@@ -65,6 +65,8 @@ def accept_claim(data, config, sessions=Session, now=None):
         )
         if row is None:
             return "unknown_item"
+        if db.get(Item, row.item_id).source_type == "customer_watch":
+            return "not_claimable"
         if row.status == "claimed":
             return "already_claimed"
         if row.status not in ("sending", "accepted", "sent", "read", "unknown"):

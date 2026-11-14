@@ -63,6 +63,7 @@ def classify(customer, title, raw, published_at=None, url=None):
 
 
 def save_signal(db, task):
+    from scout.information import sync_customer_item
     from scout.service import emit
 
     p = task.payload
@@ -86,6 +87,7 @@ def save_signal(db, task):
     existing = db.scalar(select(CustomerSignal).where(CustomerSignal.customer_id == customer.id,
         (CustomerSignal.url == url) | (CustomerSignal.content_hash == fingerprint)).limit(1))
     if existing and not (existing.quality_reason == "unverified_date" and existing.content_hash == fingerprint and quality["quality_status"] == "active"):
+        sync_customer_item(db, existing)
         emit(db, task, "customer.duplicate", customer_id=customer.id, signal_id=existing.id)
         return {"signal_id": existing.id, "duplicate": True}
     # Evidence namespace intentionally differs from public tender's URL identity.
@@ -103,6 +105,8 @@ def save_signal(db, task):
         existing.quality_reason = None
         existing.fragments = quality["fragments"]
         existing.created_at = time.time()
+        sync_customer_item(db, existing)
+        emit(db, task, "item.created", item_id=existing.id)
         emit(db, task, "customer.created", customer_id=customer.id, signal_id=existing.id, date_verified=True)
         return {"signal_id": existing.id, "duplicate": False, "quality_status": "active"}
     signal = CustomerSignal(customer_id=customer.id, document_id=doc.id, url=url,
@@ -111,6 +115,9 @@ def save_signal(db, task):
         quality_status=quality["quality_status"], quality_reason=quality["quality_reason"])
     db.add(signal)
     db.flush()
+    sync_customer_item(db, signal)
+    if signal.quality_status == "active":
+        emit(db, task, "item.created", item_id=signal.id)
     emit(db, task, "customer.created" if signal.quality_status == "active" else "customer.filtered",
          customer_id=customer.id, signal_id=signal.id)
     return {"signal_id": signal.id, "duplicate": False, "quality_status": signal.quality_status}

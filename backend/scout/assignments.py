@@ -2,6 +2,7 @@
 
 from sqlalchemy import func, select
 
+from scout.information import item_record
 from scout.models import Delivery, Item
 
 ASSIGNED = ("accepted", "sent", "read", "claimed", "restored")
@@ -27,7 +28,7 @@ def assignment_facts(db, demo, now, admin):
     allocated = (
         select(Item).where(Item.is_demo == demo)
         .join(Delivery, Delivery.item_id == Item.id)
-        .where(Delivery.status.in_(ASSIGNED))
+        .where(Delivery.status.in_(ASSIGNED), Item.source_type != "customer_watch")
     )
     backlog = db.scalars(
         unique_items(demo).where(
@@ -78,19 +79,8 @@ def assignment_facts(db, demo, now, admin):
             }
             for i in backlog
         ],
-        "assigned_items": [
-            {
-                "id": i.id,
-                "title": i.title if admin else "已分配信息",
-                "created_at": i.created_at,
-                "is_demo": i.is_demo,
-                "recipient": d.recipient if admin else "钉钉群",
-                "delivery_status": d.status,
-                "sent_at": d.sent_at,
-                "read_at": d.read_at,
-                "claimed_by": d.claimed_by_name if admin else "群成员",
-                "claimed_at": d.claimed_at,
-            }
-            for i, d in recent
-        ],
+        "assigned_items": [item_record(db, i, admin) for i, d in recent],
+        "customer_items": [item_record(db, i, admin) for i in db.scalars(
+            unique_items(demo).where(Item.source_type == "customer_watch", *current_window(now))
+            .order_by(Item.created_at.desc(), Item.id).limit(30))],
     }

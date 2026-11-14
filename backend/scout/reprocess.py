@@ -21,6 +21,8 @@ def reprocess(sessions=Session, now=None):
         rows = db.execute(select(Item, Document).join(Document, Item.document_id == Document.id)
                           .where(Item.is_demo.is_(False)).order_by(Item.created_at, Item.id))
         for item, doc in rows:
+            if item.source_type == "customer_watch":
+                continue
             policy = describe_social_demand if item.source_type == "social_demand" else describe_public_tender
             result = policy(doc.title, doc.raw_content, doc.published_at, datetime.fromtimestamp(now, ZONE))
             url = canonical_url(doc.url)

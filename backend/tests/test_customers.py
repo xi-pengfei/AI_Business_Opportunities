@@ -35,7 +35,7 @@ def ingest(db, customer_id, url='https://example.com/news/1', published=None):
     return service.save_item(db,task), task
 
 
-def test_customer_signal_isolated_from_public_rejection_and_push(client, database):
+def test_customer_signal_joins_library_without_claim_backlog(client, database):
     c = customer(client)
     assert client.get('/api/v1/rules').json() == []
     with database.begin() as db:
@@ -45,13 +45,16 @@ def test_customer_signal_isolated_from_public_rejection_and_push(client, databas
         duplicate, _ = ingest(db,c['id'],url='https://example.com/mirror')
         assert duplicate['duplicate']
         assert db.scalar(select(func.count()).select_from(CustomerSignal)) == 1
-        assert db.scalar(select(func.count()).select_from(Item)) == 0
+        assert db.scalar(select(func.count()).select_from(Item)) == 1
         assert db.scalar(select(func.count()).select_from(Delivery)) == 0
     rows=client.get('/api/v1/customer-signals').json()
     assert rows['total']==1 and rows['items'][0]['matched_name']=='示例光电股份有限公司'
     snap=client.get('/api/v1/display/snapshot').json()
-    assert snap['item_count']==0 and snap['collectors']==[]
-    assert all(r[1]==0 for r in snap['collection_history'])
+    assert snap['item_count']==1 and snap['collectors']==[]
+    assert snap['pending_count']==0 and snap['backlog_count']==0
+    assert snap['customer_items'][0]['source_name']=='客户监测'
+    assert snap['customer_items'][0]['requires_claim'] is False
+    assert client.get('/api/v1/items').json()[0]['source_type']=='customer_watch'
     masked=client.get('/api/v1/customer-signals',headers={'Authorization':'Bearer test-display'}).json()
     assert '示例' not in str(masked) and 'url' not in masked['items'][0]
     assert client.get('/api/v1/customers',headers={'Authorization':'Bearer test-display'}).status_code==403

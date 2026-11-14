@@ -13,6 +13,7 @@ from scout.assignments import assignment_facts, pending_items
 from scout.config import settings
 from scout.db import Session
 from scout.display import chart_facts, collector_status, discovery_facts, public_tasks, unique_items
+from scout.information import item_record
 from scout.models import (
     Attempt,
     Customer,
@@ -210,7 +211,7 @@ def items(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int 
 
     with Session() as db:
         return [
-            record(i)
+            item_record(db, i)
             for i in db.scalars(
                 (unique_items(demo) if status == "active" else
                  select(Item).where(Item.is_demo == demo, Item.quality_status == "archived"))
@@ -227,7 +228,7 @@ def item_detail(item_id: str):
         item = db.get(Item, item_id)
         if not item:
             raise HTTPException(404, "信息不存在")
-        return {**record(item), "evidence": record(db.get(Document, item.document_id))}
+        return {**item_record(db, item), "evidence": record(db.get(Document, item.document_id))}
 
 
 @app.get("/api/v1/display/items")
@@ -252,7 +253,7 @@ def display_items(
             )
         total = db.scalar(select(func.count()).select_from(query.subquery()))
         rows = db.scalars(query.order_by(Item.created_at.desc(), Item.id).offset(offset).limit(50))
-        return {"total": total, "items": [record(i) if current == "admin" else {
+        return {"total": total, "items": [item_record(db, i) if current == "admin" else {
             "id": i.id, "title": "已归集信息（展示模式已脱敏）",
             "created_at": i.created_at, "is_demo": i.is_demo,
         } for i in rows]}
@@ -264,7 +265,7 @@ def display_feed(after: float = Query(ge=0, allow_inf_nan=False), after_id: str 
         rows = db.scalars(unique_items(False).where(
             (Item.created_at > after) | ((Item.created_at == after) & (Item.id > after_id))
         ).order_by(Item.created_at, Item.id).limit(100)).all()
-        return {"items": [record(i) if current == "admin" else {
+        return {"items": [item_record(db, i) if current == "admin" else {
             "id": i.id, "title": "已归集信息", "created_at": i.created_at, "is_demo": False,
         } for i in rows], "after": rows[-1].created_at if rows else after,
             "after_id": rows[-1].id if rows else after_id}
@@ -303,6 +304,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
                 ] += 1
         return {
             "mode": "demo" if demo else "live",
+            "active_item_ids": list(db.scalars(unique_items(demo).with_only_columns(Item.id))),
             "server_time": now,
             "cursor": max((e.id for e in latest), default=0),
             "task_counts": counts,
@@ -321,7 +323,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             "task_scatter": [{"time": t.created_at, "duration": max(0, (t.updated_at if t.status in ("succeeded", "failed", "action_required") else now) - t.created_at), "status": t.status, "attempts": t.attempts, "kind": t.kind} for t in db.scalars(select(Task).where(Task.id.in_(public_tasks()), Task.is_demo == demo, Task.created_at >= start).order_by(Task.created_at.desc()).limit(300))],
             "collectors": collector_status(db, demo, current),
             "items": [
-                record(i)
+                item_record(db, i)
                 if current == "admin"
                 else {
                     "id": i.id,

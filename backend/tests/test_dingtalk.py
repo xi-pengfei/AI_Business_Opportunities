@@ -112,8 +112,11 @@ def test_only_explicit_claim_releases_exactly_one_next_item(database):
         facts = assignment_facts(db, False, 1094, False)
         assert facts["backlog_count"] == 1
         assert facts["assigned_count"] == 1
-        assert all(i["title"] == "已分配信息" for i in facts["assigned_items"])
-        assert all(i["claimed_by"] == "群成员" for i in facts["assigned_items"])
+        assert all(i["title"] == "已归集信息（展示模式已脱敏）" for i in facts["assigned_items"])
+        assert all(
+            i["claimed_by"] == ("群成员" if i["business_status"] == "claimed" else None)
+            for i in facts["assigned_items"]
+        )
 
 
 def test_ambiguous_send_never_repeats_or_unblocks_next(database):
@@ -258,9 +261,16 @@ def test_archived_unclaimed_message_releases_gate_but_keeps_delivery(database):
 def test_restored_delivery_is_visible_without_fabricated_receipt_or_resend(database):
     seed(database)
     with database.begin() as db:
-        db.add(Delivery(item_id="item-0", conversation_id="group", robot_code="robot",
-                        status="restored", error_code="historical_receipt_unavailable"))
-        db.get(Item,"item-1").information_kind = "bulletin"
+        db.add(
+            Delivery(
+                item_id="item-0",
+                conversation_id="group",
+                robot_code="robot",
+                status="restored",
+                error_code="historical_receipt_unavailable",
+            )
+        )
+        db.get(Item, "item-1").information_kind = "bulletin"
     transport = Transport()
     assert tick(config(), transport, database, 1000) == "empty"
     assert transport.sent == []
@@ -269,3 +279,80 @@ def test_restored_delivery_is_visible_without_fabricated_receipt_or_resend(datab
         assert rows[0]["delivery_status"] == "restored"
         assert rows[0]["sent_at"] is None
         assert rows[0]["claimed_at"] is None
+
+
+def test_customer_news_does_not_wait_for_or_accept_claims(database):
+    from scout.claims import accept_claim
+    from scout.dingtalk import tick_news
+    from scout.information import item_record
+
+    seed(database)
+    transport, cfg = Transport(), config()
+    assert tick(cfg, transport, database, 1000) == "accepted"
+    with database.begin() as db:
+        db.add(DeliveryGate(id="customer_news"))
+        i = db.get(Item, "item-1")
+        i.source_type, i.information_kind = "customer_watch", "customer_update"
+    assert tick(cfg, transport, database, 1001) == "waiting_claim"
+    assert tick_news(cfg, transport, database, 1001) == "sent"
+    assert tick_news(cfg, transport, database, 1002) == "empty"
+    assert transport.sent == ["item-0", "item-1"]
+    with database() as db:
+        assert db.get(DeliveryGate, "dingtalk").current_item_id == "item-0"
+        d = db.get(Delivery, "item-1")
+        code = d.claim_code
+        row = item_record(db, db.get(Item, "item-1"))
+        assert row["business_status"] == "sent" and row["claimed_by"] is None
+        assert row["source_name"] == "客户监测"
+    result = accept_claim(
+        {
+            "conversationType": "2",
+            "isInAtList": True,
+            "conversationId": "group",
+            "robotCode": "robot",
+            "senderId": "sender",
+            "senderNick": "staff",
+            "msgId": "reply",
+            "text": {"content": "收到 BO-" + code},
+        },
+        cfg,
+        database,
+        1003,
+    )
+    assert result == "not_claimable"
+
+
+def test_news_unknown_send_is_not_resent_and_does_not_block_other_news(database):
+    from scout.dingtalk import tick_news
+
+    seed(database)
+    with database.begin() as db:
+        db.add(DeliveryGate(id="customer_news"))
+        for i in db.scalars(select(Item)):
+            i.source_type, i.information_kind = "customer_watch", "customer_update"
+    transport = Transport()
+    transport.fail = True
+    assert tick_news(config(), transport, database, 1000) == "unknown"
+    transport.fail = False
+    assert tick_news(config(), transport, database, 1001) == "sent"
+    assert tick_news(config(), transport, database, 1002) == "empty"
+    assert transport.sent == ["item-0", "item-1"]
+
+
+def test_customer_broadcast_message_has_source_but_no_claim_instruction(database):
+    seed(database)
+    with database() as db:
+        item = db.get(Item, "item-0")
+        item.source_type = "customer_watch"
+        delivery = Delivery(
+            item_id=item.id, conversation_id="group", robot_code="robot", claim_code="abcdef123456"
+        )
+        transport = DingTalk(config())
+        captured = []
+        transport.request = lambda path, body: (
+            captured.append(body) or {"processQueryKey": "message"}
+        )
+        assert transport.send(item, delivery) == "message"
+        content = json.loads(captured[0]["msgParam"])["content"]
+        assert "信息来源：客户监测" in content
+        assert "BO-" not in content and "认领方式" not in content

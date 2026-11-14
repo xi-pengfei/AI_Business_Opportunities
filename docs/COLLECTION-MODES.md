@@ -94,3 +94,7 @@ flowchart LR
 ## 小红书需求接入
 
 已增加独立 social 队列、扫码管理页、站内搜索和笔记正文读取，复用来源终端→蜘蛛→信息库。需求与全网招采分开准入，暂不自动推送；账号异常只暂停小红书。接入步骤与限制见 XIAOHONGSHU.md，真实验收进度见 IMPLEMENTATION-STATUS.md。
+
+## 最新信息流约定
+
+所有可展示信息统一进入information_items，来源分别为public_tender（网络商机）、social_demand（小红书）、customer_watch（客户监测）。CustomerSignal仍保存客户匹配与去重索引，与Item使用相同ID，不独立维护另一套发送状态。信息库状态由information_deliveries投影，采集记录不因发送或认领而复制。客户资讯无需认领，独立广播；网络和小红书商机保持显式认领闸门。此约定替代前文客户/小红书不推送的旧规则。

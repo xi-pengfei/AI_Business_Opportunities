@@ -89,7 +89,7 @@ def test_challenge_is_not_empty_and_write_endpoints_forbidden(monkeypatch):
     assert e.value.code == "xhs_operation_not_allowed"
 
 
-def test_search_to_terminal_feed_is_deduplicated_and_not_pushed(client, database, monkeypatch):
+def test_search_to_terminal_feed_is_deduplicated_and_pushed_once(client, database, monkeypatch):
     r = client.post(
         "/api/v1/rules",
         json={"name": "social", "query": "找软件开发", "provider": "xiaohongshu", "enabled": True},
@@ -151,23 +151,27 @@ def test_search_to_terminal_feed_is_deduplicated_and_not_pushed(client, database
         assert not db.scalar(select(Task).where(Task.parent_id == tid2))
     from scout.dingtalk import tick
 
-    class NoSend:
+    class Send:
         def authenticate(self):
             pass
 
         def send(self, *args):
-            raise AssertionError("social demand must not be sent")
+            return "social-test-message"
 
     with database.begin() as db:
         db.add(DeliveryGate(id="dingtalk"))
     cfg = SimpleNamespace(
+        dingtalk_group_name="test-group",
         dingtalk_enabled=True,
         dingtalk_app_key="x",
         dingtalk_app_secret="x",
         dingtalk_robot_code="x",
         dingtalk_conversation_id="x",
     )
-    assert tick(cfg, NoSend(), database) == "empty"
+    assert tick(cfg, Send(), database) == "accepted"
+    assert tick(cfg, Send(), database) == "waiting_claim"
+    item = client.get("/api/v1/items").json()[0]
+    assert item["business_status"] == "waiting_claim" and item["source_name"] == "小红书"
 
 
 def test_login_resume_is_admin_only_and_does_not_resume_customer_tasks(
@@ -241,6 +245,9 @@ def test_one_login_failure_blocks_other_social_reads_without_blocking_public(
 
 def test_social_supply_and_hashtags_are_not_purchase_demand():
     cases = [
+        ("ERP定制开发", "需要ERP系统？专注企业ERP高端定制开发，免费获取开发报价"),
+        ("寻找核心团队", "正在寻找核心后端工程师，具备软件系统经验"),
+        ("海外软件案例参考", "想开发软件就找我们"),
         ("找软件开发公司！先要看这个", "找软件公司别先看规模，先看这一样 #软件开发[话题]#"),
         ("APP定制满意再付款", "想外包做软件的客户看过来，自有全职技术团队，为您提供方案"),
         ("软件公司怎么选择", "想咨询开发系统，主营业务为小程序开发，欢迎评论私信"),

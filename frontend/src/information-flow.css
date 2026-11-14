@@ -1,0 +1,26 @@
+.followup-panels { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:16px; margin-block:16px; }
+.followup-panels > .panel {min-width:0;}
+.information-flow-table {min-width:1100px; table-layout:auto;}
+.information-flow-table th, .information-flow-table td {width:auto!important; white-space:nowrap;}
+.information-flow-table td:first-child {min-width:180px; max-width:260px;}
+.information-flow-table td:nth-child(4) {min-width:180px; max-width:320px;}
+.information-flow-table td:nth-child(5) {max-width:180px;}
+.followup-table {min-width:620px; table-layout:auto;}
+.followup-table td,.followup-table th {white-space:nowrap;}
+.followup-table td:first-child {min-width:200px; max-width:360px;}
+.information-flow-table thead, .followup-table thead {position:sticky; top:0; z-index:2; background:var(--surface, #1c2127);}
+@media(max-width:1000px){.followup-panels{grid-template-columns:minmax(0,1fr);}}
+/* Shared library geometry applies in both management and display views. */
+.information-flow-table.fragment-table {width:100%;min-width:1500px;table-layout:fixed;}
+.information-flow-table.fragment-table th,.information-flow-table.fragment-table td {overflow:hidden;vertical-align:middle;}
+.information-flow-table.fragment-table th:nth-child(1){width:220px!important;}
+.information-flow-table.fragment-table th:nth-child(2){width:90px!important;}
+.information-flow-table.fragment-table th:nth-child(3){width:150px!important;}
+.information-flow-table.fragment-table th:nth-child(4){width:260px!important;}
+.information-flow-table.fragment-table th:nth-child(5){width:170px!important;}
+.information-flow-table.fragment-table th:nth-child(6){width:110px!important;}
+.information-flow-table.fragment-table th:nth-child(7),.information-flow-table.fragment-table th:nth-child(8),.information-flow-table.fragment-table th:nth-child(10){width:160px!important;}
+.information-flow-table.fragment-table th:nth-child(9){width:90px!important;}
+.information-flow-table .text-button,.information-flow-table .single-line {display:block;max-width:100%;overflow:hidden;white-space:nowrap!important;text-overflow:ellipsis;text-align:left;}
+.information-flow-table .fragment-tags {display:flex;flex-wrap:nowrap;min-width:0;overflow:hidden;gap:5px;}
+.information-flow-table .fragment-tag {display:block;min-width:0;max-width:180px;flex:1 1 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#282e35;color:#dce1e7;border:1px solid #3a434e;border-radius:4px;padding:3px 7px;font-size:12px;min-height:26px;text-align:left;}

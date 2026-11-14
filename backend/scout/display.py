@@ -8,7 +8,7 @@ from scout.models import Document, Event, Item, Task
 
 
 def public_tasks():
-    return select(Task.id).where(func.coalesce(Task.payload["source_type"].as_string(), "public_tender") .in_(("public_tender", "social_demand")))
+    return select(Task.id).where(func.coalesce(Task.payload["source_type"].as_string(), "public_tender") .in_(("public_tender", "social_demand", "customer_watch")))
 
 
 def unique_items(demo):
@@ -16,7 +16,7 @@ def unique_items(demo):
         select(
             Item.id,
             func.row_number()
-            .over(partition_by=Item.url, order_by=(Item.created_at.asc(), Item.id))
+            .over(partition_by=(Item.source_type, Item.url), order_by=(Item.created_at.asc(), Item.id))
             .label("position"),
         )
         .where(Item.is_demo == demo, Item.quality_status == "active")
