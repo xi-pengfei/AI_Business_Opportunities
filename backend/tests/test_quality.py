@@ -41,3 +41,23 @@ def test_expired_application_notice_is_not_current_demand():
     result = describe("2023年安徽省智能工厂名单公示", "根据申报规则，拟认定安徽企业的智能工厂。", now=NOW)
     assert result["quality_reason"] == "historical_notice"
     assert result["published_at"] is None
+
+
+def test_fragments_are_literal_spans_with_reconstructible_context():
+    from scout.quality import source_fragments
+
+    raw = "负责业务调研。岗位职责包括：打通 ERP 与 MES 数据，建设统一的数据看板。具有制造业项目经验者优先。"
+    parts = source_fragments(raw)
+    assert len(parts) == 1
+    part = parts[0]
+    assert raw[part["start"]:part["end"]] == part["text"]
+    assert part["before"] + part["text"] + part["after"] == raw
+    assert "打通 ERP 与 MES" in part["text"]
+    assert source_fragments("We cannot provide a description for this page.") == []
+
+
+def test_navigation_is_never_carried_as_a_fragment_and_old_news_is_archived():
+    from scout.quality import source_fragments
+
+    assert source_fragments("招标网 > 招标搜索 > 信息化 > 招标公告 > 带附件搜索 加载中 招标项目") == []
+    assert describe("企业数字化政策发布", "发布日期：2022-09-02。支持开展企业数字化建设。", now=NOW)["quality_reason"] == "old_information"

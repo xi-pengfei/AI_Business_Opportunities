@@ -88,7 +88,9 @@ def chart_facts(db, demo, start):
         .where(Item.is_demo == demo, Item.quality_status == "active")
         .group_by(Document.provider)
     ).all()
-    return {"collection_history": history, "source_counts": dict(sources)}
+    first = unique_items(demo).subquery()
+    categories = dict(db.execute(select(first.c.category, func.count()).group_by(first.c.category)).all())
+    return {"collection_history": history, "source_counts": dict(sources), "category_counts": categories}
 
 
 def collector_status(db, demo, role):

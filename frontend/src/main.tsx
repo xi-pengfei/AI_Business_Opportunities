@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { Charts } from "./Charts";
 import type { ChartSelection } from "./Charts";
 import { RegionMap } from "./RegionMap";
+import { expandCargo, landFragment, fragmentColor, cargoKey } from "./fragments";
+import type { Cargo } from "./fragments";
 import { Spider } from "./Spider";
 import { clock, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
@@ -34,8 +36,11 @@ function App() {
   const [detail, setDetail] = useState<
     (Item & { evidence: { raw_content: string; content_kind: string } }) | null
   >(null);
-  const [moving, setMoving] = useState<Item | null>(null);
-  const cargoQueue = useRef<Item[]>([]);
+  const [moving, setMoving] = useState<Cargo | null>(null);
+  const cargoQueue = useRef<Cargo[]>([]);
+  const currentCargo = useRef<Cargo | null>(null);
+  const [library, setLibrary] = useState<Item[]>([]);
+  const [landed, setLanded] = useState<Set<string>>(new Set());
   const activeCargo = useRef(false);
   const feedCursor = useRef<{after: number; after_id: string} | null>(null);
   const [terminalFeed, setTerminalFeed] = useState<Item[]>([]);
@@ -43,12 +48,21 @@ function App() {
   const nextCargo = useCallback(() => {
     const next = cargoQueue.current.shift() || null;
     activeCargo.current = !!next;
+    currentCargo.current = next;
     setMoving(next);
-    if (next) setTerminalFeed(old => [...old.slice(-5), next]);
+    if (next) setTerminalFeed(old => [...old.filter(i => i.id !== next.id).slice(-3), next]);
   }, []);
+  const completeCargo = useCallback(() => {
+    const cargo = currentCargo.current;
+    if (cargo) {
+      setLibrary(old => landFragment(old, cargo));
+      setLanded(old => new Set([...old, cargoKey(cargo)]));
+    }
+    nextCargo();
+  }, [nextCargo]);
   useEffect(() => {
     const box = terminalScroll.current;
-    if (box) box.scrollTo({top: box.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth"});
+    if (box && !currentCargo.current) box.scrollTop = box.scrollHeight;
   }, [terminalFeed]);
   const seen = useRef(new Set<string>()),
     hydrated = useRef(false);
@@ -94,12 +108,16 @@ function App() {
       if (!hydrated.current) {
         feedCursor.current = {after: snapshot.server_time, after_id: ""};
         setTerminalFeed(snapshot.items.slice(0, 3).reverse());
+        setLibrary(snapshot.items);
+        setLanded(new Set(expandCargo(snapshot.items).map(cargoKey)));
       } else if (feedCursor.current && cargoQueue.current.length < 200) {
         const cursor = feedCursor.current;
         const feed = await request(`/display/feed?after=${cursor.after}&after_id=${encodeURIComponent(cursor.after_id)}`);
         if (activeView.current !== viewKey) return;
         feedCursor.current = {after: feed.after, after_id: feed.after_id};
-        cargoQueue.current.push(...feed.items);
+        const plain = (feed.items as Item[]).filter(i => !i.fragments?.length);
+        if (plain.length) setLibrary(old => [...plain, ...old.filter(i => !plain.some(p => p.id === i.id))].slice(0,30));
+        cargoQueue.current.push(...expandCargo(feed.items));
         if (!activeCargo.current) nextCargo();
       }
       hydrated.current = true;
@@ -129,7 +147,7 @@ function App() {
     hydrated.current = false;
     seen.current.clear();
     setMoving(null);
-    cargoQueue.current = []; activeCargo.current = false; feedCursor.current = null; setTerminalFeed([]);
+    cargoQueue.current = []; currentCargo.current = null; setLibrary([]); setLanded(new Set()); activeCargo.current = false; feedCursor.current = null; setTerminalFeed([]);
     setData(null);
   }, [demo, token]);
   useEffect(() => {
@@ -345,7 +363,7 @@ function App() {
       )}
       {display && data && (
         <>
-          <Charts data={data} onSelect={setChartSelection} />
+          <div className="charts"><Charts data={data} onSelect={setChartSelection} /><RegionMap data={data} onSelect={setChartSelection} /></div>
           {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
             selection={chartSelection} request={request} close={() => setChartSelection(null)}
             open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
@@ -397,7 +415,14 @@ function App() {
                 {terminalFeed.map(entry => <article className={`source-preview ${moving?.id === entry.id ? "cargo-source" : ""}`} key={entry.id}>
                   <small>{clock(entry.created_at)} · 已读取</small>
                   {entry.url && <a href={entry.url} target="_blank" rel="noopener noreferrer">{entry.url}</a>}
-                  <h3>{entry.title}</h3><p>{entry.text || "摘要已脱敏"}</p>
+                  <h3>{entry.title}</h3>
+                  <div className="source-pieces">{(entry.fragments || []).map(f => {
+                    const key = `${entry.id}:${f.index}`;
+                    return <p key={f.index} className="source-context">{f.before}<mark
+                      data-source-fragment={key}
+                      className={(moving && cargoKey(moving) === key) || landed.has(key) ? "fragment-picked" : ""}
+                      style={{"--fragment-color": fragmentColor(f.index)} as React.CSSProperties}>{f.text}</mark>{f.after}</p>;
+                  })}</div>
                 </article>)}
               </div>
               <p>
@@ -439,7 +464,7 @@ function App() {
                 信息库 <small>{data.item_count} 条</small>
               </h2>
               <Information
-                items={data.items}
+                items={library}
                 open={(item) => {
                   if (item.url)
                     request(`/items/${item.id}`)
@@ -450,7 +475,7 @@ function App() {
             </section>
             <Spider
               item={moving}
-              onDelivered={nextCargo}
+              onDelivered={completeCargo}
               searching={
                 connected &&
                 !!data.collectors?.some((c) =>
@@ -459,31 +484,7 @@ function App() {
               }
             />
           </div>
-          <RegionMap data={data} onSelect={setChartSelection} />
-          <section className="panel handoff">
-            <h2>分配与接收</h2>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>信息</th>
-                    <th>负责人</th>
-                    <th>分配时间</th>
-                    <th>推送结果</th>
-                    <th>接收状态</th>
-                    <th>接收时间</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td colSpan={6} className="empty">
-                      分配与通知尚未接入 · 已归集信息可在信息库查看与人工跟进
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
+
         </>
       )}
       {!data && <div className="empty">正在读取运行状态…</div>}
@@ -745,63 +746,18 @@ function ChartRecords({ selection, request, close, open }: {
       </>}
   </section>;
 }
-function Information({
-  items,
-  open,
-}: {
-  items: Item[];
-  open: (item: Item) => void;
-}) {
-  return (
-    <>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>标题与摘要</th>
-              <th>原始网址</th>
-              <th>联系方式</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  {item.url ? (
-                    <button className="text-button" onClick={() => open(item)}>
-                      {item.title}
-                    </button>
-                  ) : (
-                    <span>{item.title}</span>
-                  )}
-                  <p className="excerpt">{item.text?.slice(0, 160)}</p>
-                  <small>{item.published_at ? `发布 ${item.published_at}` : "发布日期待确认"}{item.region ? ` · ${item.region}` : ""}</small>
-                  {item.region_evidence && <small className="region-evidence">地区依据：{item.region_evidence}</small>}
-                </td>
-                <td>
-                  {item.url ? (
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {new URL(item.url).hostname}
-                    </a>
-                  ) : (
-                    "已脱敏"
-                  )}
-                </td>
-                <td>{item.contacts?.map((c) => c.value).join(" / ") || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {!items.length && (
-        <p className="empty">尚无归集信息。采集完成后会自动出现。</p>
-      )}
-    </>
-  );
+function Information({ items, open }: { items: Item[]; open: (item: Item) => void }) {
+  return <><div className="table-scroll"><table className="fragment-table">
+    <thead><tr><th>标题</th><th data-inbox-target>信息片</th><th>原始网址</th><th>新闻时间</th><th>采集时间</th></tr></thead>
+    <tbody>{items.map(item => <tr key={item.id} data-library-item={item.id}>
+      <td>{item.url ? <button className="text-button" onClick={()=>open(item)}>{item.title}</button> : item.title}</td>
+      <td><div className="fragment-tags">{(item.fragments || []).map(f => <span
+        className="fragment-tag" key={f.index} data-landed-fragment={`${item.id}:${f.index}`}
+        style={{"--fragment-color":fragmentColor(f.index)} as React.CSSProperties}>{f.text}</span>)}</div></td>
+      <td>{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" title={item.url}>{new URL(item.url).hostname}</a> : "—"}</td>
+      <td>{item.published_at || "—"}</td><td>{clock(item.created_at)}</td>
+    </tr>)}</tbody>
+  </table></div>{!items.length && <p className="empty">等待采集到的信息片</p>}</>;
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

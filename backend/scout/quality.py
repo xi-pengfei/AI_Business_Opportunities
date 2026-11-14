@@ -42,7 +42,7 @@ def describe(title, raw, published_at=None, now=None):
         if match:
             published = as_date(match.group())
     procurement = bool(re.search(r"招标|采购|投标|询价|磋商", title))
-    reason = None
+    reason = "old_information" if published and published < now - timedelta(days=365) else None
     if PLACEHOLDERS.search(original) or not original.strip() or original.strip() == title.strip():
         reason = "missing_summary"
     deadline = re.search(r"(?:投标截止时间|响应文件提交截止时间|开标时间)[：:\s]*" + DATE, original)
@@ -84,6 +84,57 @@ def describe(title, raw, published_at=None, now=None):
     summary = " ".join((useful or lines)[:3])[:360].strip()
     if not summary and not reason:
         reason = "missing_summary"
-    return {"text": summary, "quality_status": "archived" if reason else "active",
+    fragments = source_fragments(raw)
+    if not fragments and not reason:
+        reason = "missing_fragment"
+    return {"text": summary, "fragments": fragments,
+            "category": information_category(title, raw), "quality_status": "archived" if reason else "active",
             "quality_reason": reason, "region": region, "region_evidence": evidence,
             "published_at": published.date().isoformat() if published else None}
+
+
+def source_fragments(raw):
+    """Return literal spans plus offsets in normalized source text; never paraphrase."""
+    soup = BeautifulSoup(raw, "html.parser")
+    for tag in soup(["script", "style", "nav", "header", "footer", "noscript"]):
+        tag.decompose()
+    source = " ".join(soup.get_text(" ").split())
+    fragments = []
+    keywords = re.compile(r"ERP|MES|AI|智能体|信息化|数字化|采购|招标|需求|招聘|融资|扩建|建设|供应商|审批|对账|系统|软件", re.I)
+    has_keyword = keywords.search(source)
+    for match in re.finditer(r"[^。！？；;\n]+[。！？；;]?", source):
+        value = match.group()
+        hit = keywords.search(value)
+        if (not hit and has_keyword) or len(value.strip()) < 8 or PLACEHOLDERS.search(value):
+            continue
+        if re.search(NAV + r"|招标搜索|带附件搜索|加载中|版权|备案号", value) or value.count(">") >= 2:
+            continue
+        # Take one contiguous source span, including no more than 80 characters.
+        left = max(0, hit.start() - 20) if hit else 0
+        start = match.start() + left
+        end = min(match.end(), start + 80)
+        while start < end and source[start].isspace():
+            start += 1
+        while end > start and source[end - 1].isspace():
+            end -= 1
+        text = source[start:end]
+        if not text or any(f["text"] == text for f in fragments):
+            continue
+        fragments.append({"index": len(fragments), "text": text, "start": start, "end": end,
+                          "before": source[max(0, start - 45):start],
+                          "after": source[end:end + 45]})
+        if len(fragments) == 3:
+            break
+    return fragments
+
+
+def information_category(title, raw):
+    if re.search(r"招聘|岗位职责|任职要求", title + " " + raw[:1000]):
+        return "招聘动态"
+    if re.search(r"招标|采购|投标|询价|磋商", title):
+        return "招采公告"
+    if re.search(r"需求|寻找|求助|求推荐", title):
+        return "需求讨论"
+    if re.search(r"融资|扩建|投产|新闻|动态|财报|年报", title):
+        return "企业动态"
+    return "其他信息"

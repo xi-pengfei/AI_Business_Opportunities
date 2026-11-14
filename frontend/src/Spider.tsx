@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { Item } from "./types";
+import { cargoKey, fragmentColor, type Cargo } from "./fragments";
 // Visual delivery only: the item has already been committed by the backend.
 export function Spider({
   item,
   searching = false,
   onDelivered,
 }: {
-  item: Item | null;
+  item: Cargo | null;
   searching?: boolean;
   onDelivered: () => void;
 }) {
@@ -26,7 +26,7 @@ export function Spider({
   }, []);
   useEffect(() => {
     const cargo = item;
-    if (delivery.current.id !== item?.id) delivery.current = {id: item?.id || null, start: 0, done: false};
+    if (delivery.current.id !== (item ? cargoKey(item) : null)) delivery.current = {id: item ? cargoKey(item) : null, start: 0, done: false};
     const canvas = ref.current;
     if (!canvas) return;
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -44,9 +44,14 @@ export function Spider({
     canvas.width = r.width * ratio;
     canvas.height = r.height * ratio;
     ctx.scale(ratio, ratio);
-    const small = r.width < 700;
-    const from = { x: Math.min(190, r.width / 5), y: 200 },
-      to = { x: small ? r.width * 0.6 : r.width * 0.62, y: small ? 440 : 200 };
+    const source = cargo ? parent.querySelector<HTMLElement>(`[data-source-fragment="${cargoKey(cargo)}"]`) : null;
+    const box = parent.querySelector<HTMLElement>('.terminal-feed');
+    if (source && box) box.scrollTop += source.getBoundingClientRect().top - box.getBoundingClientRect().top - 65;
+    const sr = source?.getBoundingClientRect();
+    const target = parent.querySelector('[data-inbox-target]')?.getBoundingClientRect();
+    const from = {x: sr ? sr.left - r.left + Math.min(sr.width / 2, 130) : 160, y: sr ? sr.top - r.top + 8 : 170};
+    const to = {x: target ? target.left - r.left + target.width / 2 : r.width * .7, y: target ? target.bottom - r.top + 48 : 150};
+    const fragment = cargo?.fragments?.find(f => f.index === cargo.fragmentIndex);
     let raf = 0,
       start = 0;
     const feet = Array.from({ length: 8 }, () => ({ x: 0, y: 0, init: false }));
@@ -56,15 +61,11 @@ export function Spider({
       if (cargo && !delivery.current.start) delivery.current.start = now;
       const elapsed = (now - start) / 1000;
       const p = cargo ? Math.min(1, (now - delivery.current.start) / 4500) : 0;
-      const travel =
-          (!cargo || p >= 1) && state.current.searching
-            ? (1 - Math.cos(elapsed * 0.7)) * 0.45
-            : p > 0.82
-              ? Math.max(0, (1 - p) / 0.18)
-              : Math.max(0, Math.min(1, (p - 0.15) / 0.6)),
+      const travel = Math.max(0, Math.min(1, (p - 0.18) / 0.72)),
         q = travel * travel * (3 - 2 * travel),
         x = from.x + (to.x - from.x) * q,
         y = from.y + (to.y - from.y) * q;
+      canvas.dataset.phase = cargo ? p < .18 ? "highlight" : p < .9 ? "carrying" : "landing" : "waiting";
       ctx.clearRect(0, 0, r.width, r.height);
       ctx.lineWidth = 1.2;
       ctx.strokeStyle = `hsl(${195 + 40 * Math.sin(elapsed)} 60% 74%)`;
@@ -124,26 +125,33 @@ export function Spider({
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      if (cargo && p > 0.12 && p < 0.82) {
-        const message = (cargo!.text || cargo!.title).slice(0, 23);
+      if (cargo && fragment && p > 0.18 && p < 1) {
         ctx.font = "12px system-ui";
-        const tw = Math.min(ctx.measureText(message).width + 16, r.width - 16);
-        ctx.fillStyle = "#70c3ce";
-        ctx.fillRect(Math.min(x, r.width - tw), y + 22, tw, 28);
+        const lines: string[] = [];
+        let line = '';
+        for (const char of fragment.text) {
+          if (ctx.measureText(line + char).width > 255) { lines.push(line); line = ''; }
+          line += char;
+        }
+        if (line) lines.push(line);
+        const tw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 18;
+        const tx = Math.max(8, Math.min(x - tw / 2, r.width - tw - 8));
+        ctx.fillStyle = fragmentColor(cargo.fragmentIndex);
+        ctx.fillRect(tx, y + 18, tw, lines.length * 18 + 10);
         ctx.fillStyle = "#10181d";
-        ctx.fillText(message, Math.min(x, r.width - tw) + 8, y + 41, tw - 16);
+        lines.forEach((l, i) => ctx.fillText(l, tx + 9, y + 36 + i * 18));
       }
       if (cargo && p >= 1 && !delivery.current.done) {
         delivery.current.done = true;
         state.current.onDelivered();
       }
-      raf = requestAnimationFrame(draw);
+      if (cargo && p < 1) raf = requestAnimationFrame(draw);
     }
     raf = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(raf);
       ctx.clearRect(0, 0, r.width, r.height);
     };
-  }, [item?.id, size]);
+  }, [item ? cargoKey(item) : null, size]);
   return <canvas className="spider" ref={ref} aria-hidden="true" />;
 }

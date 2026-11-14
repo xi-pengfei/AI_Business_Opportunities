@@ -160,6 +160,8 @@ def save_item(db, task):
                 title=p["title"],
                 url=url,
                 text=quality["text"],
+                fragments=quality["fragments"],
+                category=quality["category"],
                 quality_status=quality["quality_status"],
                 quality_reason=quality["quality_reason"],
                 region=quality["region"],

@@ -89,6 +89,8 @@ class Item(Base):
     title: Mapped[str] = mapped_column(Text)
     url: Mapped[str] = mapped_column(Text)
     text: Mapped[str] = mapped_column(Text)
+    fragments: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    category: Mapped[str] = mapped_column(String(30), default="其他信息", server_default="其他信息")
     contacts: Mapped[list] = mapped_column(JSON, default=list)
     quality_status: Mapped[str] = mapped_column(String(20), default="active", server_default="active")
     quality_reason: Mapped[str | None] = mapped_column(String(50))

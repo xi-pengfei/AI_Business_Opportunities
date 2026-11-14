@@ -1,6 +1,9 @@
+export type Fragment = { index: number; text: string; start: number; end: number; before: string; after: string };
 export type Item = {
   id: string;
   title: string;
+  fragments?: Fragment[];
+  category?: string;
   url?: string;
   text?: string;
   contacts?: { type: string; value: string }[];
@@ -46,6 +49,7 @@ export type Snapshot = {
   discovery_history: { start: number; end: number; sources: Record<string, number> }[];
   discovery_calendar: { date: string; start: number; end: number; count: number }[];
   source_counts: Record<string, number>;
+  category_counts: Record<string, number>;
   items: Item[];
   events: Execution[];
 };
