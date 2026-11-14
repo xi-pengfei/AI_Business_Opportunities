@@ -1,4 +1,4 @@
-"""Only call the fixed search API. Never fetch result URLs in this milestone."""
+"""Only call fixed or administrator-configured search services. Never fetch result URLs in this milestone."""
 
 import ipaddress
 from urllib.parse import urlsplit, urlunsplit
@@ -50,6 +50,8 @@ def clean_text(raw):
 
 def search(payload, config):
     provider = payload["provider"]
+    if provider == "searxng":
+        return search_searxng(payload, config)
     if provider == "demo":
         if not config.allow_demo:
             raise ProviderError("demo_disabled", True)
@@ -103,3 +105,43 @@ def search(payload, config):
         raise
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         raise ProviderError("search_request_failed") from None
+
+
+def search_searxng(payload, config):
+    """Administrator-configured service; result URLs are evidence, never fetched here."""
+    if not config.searxng_url:
+        raise ProviderError("searxng_not_configured", True)
+    try:
+        with httpx.Client(timeout=httpx.Timeout(25, connect=5), trust_env=False) as client:
+            response = client.get(
+                config.searxng_url.rstrip("/") + "/search",
+                params={
+                    "q": payload["query"],
+                    "format": "json",
+                    "language": "zh-CN",
+                    "categories": "general",
+                    "pageno": payload.get("page", 1),
+                },
+            )
+        response.raise_for_status()
+        data = response.json()
+        results = data.get("results")
+        if not isinstance(results, list):
+            raise ValueError()
+        if not results and data.get("unresponsive_engines"):
+            raise ProviderError("searxng_engines_unavailable")
+        return [
+            {
+                "title": str(r.get("title") or "未命名来源")[:1000],
+                "url": str(r.get("url") or ""),
+                "raw_content": str(r.get("content") or r.get("title") or "")[:200000],
+                "content_kind": "search_excerpt",
+                "published_at": None,
+            }
+            for r in results
+            if isinstance(r, dict) and r.get("url")
+        ]
+    except ProviderError:
+        raise
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        raise ProviderError("searxng_request_failed") from None

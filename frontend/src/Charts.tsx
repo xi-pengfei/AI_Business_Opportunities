@@ -100,6 +100,7 @@ export function Charts({ data }: { data: Snapshot }) {
     (a, b) => b[1] - a[1],
   );
   const names: Record<string, string> = {
+    searxng: "开源搜索",
     demo: "演示来源",
     tavily: "全网搜索",
   };

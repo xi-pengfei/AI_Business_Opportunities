@@ -24,6 +24,7 @@ function App() {
     [busy, setBusy] = useState(false),
     [connected, setConnected] = useState(false);
   const [providers, setProviders] = useState<{
+    searxng: { configured: boolean };
     tavily: { configured: boolean };
     demo: { enabled: boolean };
   } | null>(null);
@@ -502,6 +503,7 @@ function App() {
               <label>
                 搜索服务
                 <select name="provider">
+                  <option value="searxng">SearXNG 自建搜索</option>
                   <option value="tavily">
                     Tavily 全网搜索
                     {providers && !providers.tavily.configured

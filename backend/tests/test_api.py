@@ -49,7 +49,9 @@ def test_demo_separation_and_display_redaction(client, database):
 
 
 def test_retry_only_after_failure(client):
-    rule = client.post("/api/v1/rules", json={"name": "真实", "query": "ERP"}).json()
+    rule = client.post(
+        "/api/v1/rules", json={"name": "真实", "query": "ERP", "provider": "tavily"}
+    ).json()
     task = client.post(f"/api/v1/rules/{rule['id']}/run", headers={"Idempotency-Key": "run"}).json()
     assert client.post(f"/api/v1/tasks/{task['id']}/retry").status_code == 409
     service.execute(task["id"])

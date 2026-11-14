@@ -89,6 +89,7 @@ def start_rule(db, rule, key):
             "query": query,
             "provider": rule.provider,
             "max_results": rule.max_results,
+            "page": rounds // (len(queries) * len(scopes)) + 1 if rule.provider == "searxng" else 1,
         },
         key=key,
         rule=rule,

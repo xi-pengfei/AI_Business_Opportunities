@@ -67,6 +67,9 @@ export const status: Record<string, string> = {
   failed: "失败",
 };
 export const errors: Record<string, string> = {
+  searxng_not_configured: "自建搜索服务尚未配置",
+  searxng_engines_unavailable: "上游搜索引擎暂时不可用，正在等待重试",
+  searxng_request_failed: "自建搜索连接失败，正在重试",
   search_key_missing: "未配置 Tavily 密钥，请在服务端配置后重试",
   search_authorization_required: "搜索服务授权或额度异常",
   search_rate_limited: "搜索服务限流，等待重试",

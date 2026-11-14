@@ -1,0 +1,10 @@
+use_default_settings: true
+server:
+  limiter: false
+  image_proxy: false
+search:
+  formats: [html, json]
+  default_lang: zh-CN
+outgoing:
+  request_timeout: 10
+  max_request_timeout: 15

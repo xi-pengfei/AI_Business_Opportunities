@@ -47,7 +47,7 @@ def task_record(row):
 class RuleInput(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     query: str = Field(min_length=1, max_length=500)
-    provider: Literal["tavily", "demo"] = "tavily"
+    provider: Literal["searxng", "tavily", "demo"] = "searxng"
     interval_seconds: int = Field(default=0, ge=0, le=2592000)
     max_results: int = Field(default=20, ge=1, le=20)
     enabled: bool = False
@@ -92,6 +92,7 @@ def ready():
 @app.get("/api/v1/providers", dependencies=[Depends(admin)])
 def providers():
     return {
+        "searxng": {"configured": bool(settings().searxng_url)},
         "tavily": {"configured": bool(settings().tavily_api_key)},
         "demo": {"enabled": settings().allow_demo},
     }

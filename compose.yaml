@@ -10,6 +10,14 @@ x-backend: &backend
       condition: service_completed_successfully
   restart: unless-stopped
 services:
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Run scripts/setup.sh first}
+    volumes:
+      - ./infrastructure/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    ports: ["127.0.0.1:58080:8080"]
+    restart: unless-stopped
   db:
     image: postgres:17-bookworm
     environment:
