@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 
 from scout.models import Delivery, Item
 
-ASSIGNED = ("accepted", "sent", "read", "claimed")
+ASSIGNED = ("accepted", "sent", "read", "claimed", "restored")
 
 
 def pending_items(demo=False, now=None):

@@ -16,7 +16,7 @@ def test_bulletin_is_discarded_without_content_storage(database):
         assert db.scalar(select(func.count()).select_from(Document)) == 0
 
 
-def test_purge_removes_claims_content_and_gate_but_prevents_recollection(database):
+def test_purge_preserves_deliveries_and_gate_but_removes_bulletins(database):
     from test_retention import NOW, add
 
     with database.begin() as db:
@@ -32,17 +32,16 @@ def test_purge_removes_claims_content_and_gate_but_prevents_recollection(databas
         task.status = "succeeded"
         task.result = {"item_id": item.id}
     result = purge(database)
-    assert result["items_deleted"] == 2
-    assert result["deliveries_deleted"] == 1
+    assert result["items_deleted"] == 1
     with database.begin() as db:
-        assert db.scalar(select(func.count()).select_from(Delivery)) == 0
-        assert db.scalar(select(func.count()).select_from(Document)) == 1
-        assert db.scalar(select(func.count()).select_from(RemovedEvidence)) == 2
-        assert db.get(DeliveryGate, "dingtalk").current_item_id is None
-        assert "raw_content" not in db.scalar(select(Task)).payload
+        assert db.scalar(select(func.count()).select_from(Delivery)) == 1
+        assert db.scalar(select(func.count()).select_from(Document)) == 2
+        assert db.scalar(select(func.count()).select_from(RemovedEvidence)) == 1
+        assert db.get(DeliveryGate, "dingtalk").current_item_id == "claimed"
+        assert "raw_content" in db.scalar(select(Task)).payload
         task = enqueue(db, kind="ingest", key="repeated", payload={
-            "provider": "searxng", "title": "甲公司软件采购公告", "url": "https://example.com/claimed",
+            "provider": "searxng", "title": "甲公司软件采购公告", "url": "https://example.com/bulletin",
             "raw_content": "甲公司拟采购ERP系统，更新后的搜索摘要。", "content_kind": "search_excerpt"})
         assert save_item(db, task)["reason"] == "removed_information"
-        assert db.scalar(select(func.count()).select_from(Item)) == 1
+        assert db.scalar(select(func.count()).select_from(Item)) == 2
     assert purge(database).get("items_deleted", 0) == 0

@@ -253,3 +253,19 @@ def test_archived_unclaimed_message_releases_gate_but_keeps_delivery(database):
     assert transport.sent == ["item-0", "item-1"]
     with database() as db:
         assert db.get(Delivery, "item-0").status == "accepted"
+
+
+def test_restored_delivery_is_visible_without_fabricated_receipt_or_resend(database):
+    seed(database)
+    with database.begin() as db:
+        db.add(Delivery(item_id="item-0", conversation_id="group", robot_code="robot",
+                        status="restored", error_code="historical_receipt_unavailable"))
+        db.get(Item,"item-1").information_kind = "bulletin"
+    transport = Transport()
+    assert tick(config(), transport, database, 1000) == "empty"
+    assert transport.sent == []
+    with database() as db:
+        rows = assignment_facts(db, False, 1000, True)["assigned_items"]
+        assert rows[0]["delivery_status"] == "restored"
+        assert rows[0]["sent_at"] is None
+        assert rows[0]["claimed_at"] is None

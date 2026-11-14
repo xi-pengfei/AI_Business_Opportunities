@@ -1,11 +1,11 @@
-"""Delete bulletin and existing delivery content; retain only content-free hashes."""
+"""Delete undelivered bulletin content; never delete delivery or claim history."""
 import hashlib
 from collections import Counter
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from scout.db import Session
-from scout.models import Delivery, DeliveryGate, Document, Item, RemovedEvidence, Task
+from scout.models import Delivery, Document, Item, RemovedEvidence, Task
 from scout.providers import canonical_url, clean_text
 from scout.quality import describe
 
@@ -19,12 +19,8 @@ def purge(sessions=Session):
     with sessions.begin() as db:
         delivered = set(db.scalars(select(Delivery.item_id)))
         removed_ids = set()
-        for gate in db.scalars(select(DeliveryGate).with_for_update()):
-            gate.current_item_id = None
-        db.execute(delete(Delivery))
-        counts["deliveries_deleted"] = len(delivered)
         for item in db.scalars(select(Item).where(Item.is_demo.is_(False))).all():
-            if item.information_kind != "bulletin" and item.id not in delivered:
+            if item.information_kind != "bulletin" or item.id in delivered:
                 continue
             doc = db.get(Document, item.document_id)
             key = hashlib.sha256(canonical_url(doc.url).encode()).hexdigest()
@@ -40,7 +36,7 @@ def purge(sessions=Session):
                                                  Task.status.in_(("succeeded", "failed", "action_required")))).all():
             p = task.payload
             raw = p.get("raw_content")
-            if not raw:
+            if not raw or task.result.get("item_id") in delivered:
                 continue
             removed = task.result.get("item_id") in removed_ids or hashlib.sha256(clean_text(raw).encode()).hexdigest() in hashes
             bulletin = describe(p.get("title", ""), raw, p.get("published_at"))["information_kind"] == "bulletin"
