@@ -302,10 +302,6 @@ def snapshot(demo: bool = False, current=Depends(role)):
             "trend": buckets,
             **chart_facts(db, demo, start),
             **discovery_facts(db, demo, now),
-            "bulletins": [record(i) if current == "admin" else {
-                "id": i.id, "title": "行业资讯", "created_at": i.created_at,
-            } for i in db.scalars(unique_items(demo).where(Item.information_kind == "bulletin")
-                                  .order_by(Item.created_at.desc(), Item.id).limit(30))],
             "delivery": {"available": False, "sent": None},
             **assignment_facts(db, demo, now, current == "admin"),
             "regions": [{"name": r, "count": n} for r, n in db.execute(

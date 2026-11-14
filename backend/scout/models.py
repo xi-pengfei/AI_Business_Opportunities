@@ -136,3 +136,9 @@ class DeliveryGate(Base):
     __tablename__ = "delivery_gates"
     id: Mapped[str] = mapped_column(String(30), primary_key=True)
     current_item_id: Mapped[str | None] = mapped_column(ForeignKey("information_items.id"))
+
+
+class RemovedEvidence(Base):
+    __tablename__ = "removed_evidence"
+    url_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)

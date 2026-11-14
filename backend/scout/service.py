@@ -7,7 +7,7 @@ from sqlalchemy import text as sql_text
 
 from scout.config import settings
 from scout.db import Session
-from scout.models import Attempt, Document, Event, Item, Outbox, Rule, Task, uid
+from scout.models import Attempt, Document, Event, Item, Outbox, RemovedEvidence, Rule, Task, uid
 from scout.providers import ProviderError, canonical_url, clean_text, search
 from scout.quality import describe
 
@@ -125,7 +125,23 @@ def save_item(db, task):
     text = clean_text(raw)
     if not text:
         raise ProviderError("empty_content")
+    fingerprint = hashlib.sha256(text.encode()).hexdigest()
+    removed = db.scalar(select(RemovedEvidence).where(
+        (RemovedEvidence.url_hash == hashlib.sha256(url.encode()).hexdigest()) |
+        (RemovedEvidence.content_hash == fingerprint)).limit(1)) if not task.is_demo else None
+    if removed:
+        from scout.purge_bulletins import discarded_payload
+
+        task.payload = discarded_payload(p.get("provider"), "removed_information")
+        emit(db, task, "item.discarded", reason="removed_information")
+        return {"discarded": True, "reason": "removed_information"}
     quality = describe(p["title"], raw, p.get("published_at"))
+    if not task.is_demo and quality["information_kind"] == "bulletin":
+        from scout.purge_bulletins import discarded_payload
+
+        task.payload = discarded_payload(p.get("provider"))
+        emit(db, task, "item.discarded", reason="not_opportunity")
+        return {"discarded": True, "reason": "not_opportunity"}
     if task.is_demo and quality["quality_reason"] == "unverified_date":
         quality.update(quality_status="active", quality_reason=None)
     fingerprint = hashlib.sha256(text.encode()).hexdigest()
