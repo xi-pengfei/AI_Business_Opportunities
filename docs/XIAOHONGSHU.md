@@ -29,3 +29,13 @@ docker compose --profile xiaohongshu up -d xiaohongshu social-worker
 `Item.source_type=social_demand`、`information_kind=demand`、`category=小红书需求`。公开招采的历史拒绝指纹不适用于小红书；全网资讯清理也不会删除小红书需求。钉钉明确仅选择opportunity类型，需求先进入信息库供人工查看。
 
 搜索接口目前返回页面已加载的结果，没有已验证的分页游标；首版轮换关键词并按最新排序复查，不宣称可以无限翻页或搜全所有帖子。没有返回正文、登录异常、验证码、响应格式改变都不视为正常空结果。采集动画仅由真实新增Item触发；测试数据只用于隔离测试，不进入生产库。
+
+## Apple Silicon 本机运行
+
+本机测试中，v2.7.4 的 linux/amd64 容器浏览器持续无法获取二维码（40秒及110秒均超时），同版本 darwin-arm64 原生浏览器成功。此环境改用原生连接器；不是通过无限延长超时解决。
+
+原生服务监听 `127.0.0.1:18061`，Docker Desktop 后台通过 `XIAOHONGSHU_URL=http://host.docker.internal:18061` 访问，仍校验内部认证令牌。原容器停止，避免同一账号两套浏览器并行。管理台扫码流程不变。
+
+使用项目官方 release 的 `xiaohongshu-mcp-darwin-arm64`（v2.7.4），浏览器由连接器下载并校验SHA256。`scripts/xiaohongshu_native.py --config <私有配置文件> --runtime <私有运行目录>` 读取 `XIAOHONGSHU_TOKEN`，启动本地二进制 `xiaohongshu-mcp.asset`；密钥不出现在命令行。
+
+本机运行目录在 `~/Library/Application Support/AI_Business_Opportunities/xiaohongshu`，包含连接器、账号Cookie及仅含内部令牌的配置（文件权限0600，目录0700）。由 `~/Library/LaunchAgents/com.aibusiness.xiaohongshu.plist` 管理，用户登录后启动、意外退出自动重启；系统关机或休眠期间不能采集。运行文件与会话均不进Git。连接器安装在Application Support，避免后台服务读取Documents目录受系统权限阻拦。
