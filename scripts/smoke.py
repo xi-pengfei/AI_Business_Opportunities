@@ -20,6 +20,16 @@ def api(path, body=None, key=None):
     with urllib.request.urlopen(req, timeout=15) as response:
         return json.load(response)
 
+deadline = time.monotonic() + 30
+while True:
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:58100/health/ready', timeout=2) as ready:
+            if ready.status == 200:
+                break
+    except OSError:
+        if time.monotonic() >= deadline:
+            raise SystemExit('API not ready within 30 seconds') from None
+        time.sleep(1)
 live_before = api('/display/snapshot')['item_count']
 rule = api('/rules', {'name':'开发验收 · 供应商对账', 'query':'供应商 对账 审批', 'provider':'demo'})
 key = str(uuid.uuid4())
