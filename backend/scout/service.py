@@ -61,7 +61,8 @@ def start_rule(db, rule, key, scheduled=False):
         payload={
             "query": query,
             "provider": rule.provider,
-            "source_type": "public_tender",
+            "source_type": rule.source_type or "public_tender",
+            **({"customer_id": rule.customer_id} if rule.customer_id else {}),
             "max_results": rule.max_results,
             "page": lane.page if lane else 1,
             **({"engine":lane.engine,"search_cursor_id":lane.id} if lane else {}),
@@ -93,6 +94,9 @@ def claim(task_id):
 
 def save_item(db, task):
     p = task.payload
+    if p.get("source_type") == "customer_watch":
+        from scout.customers import save_signal
+        return save_signal(db, task)
     url = canonical_url(p["url"])
     existing = db.scalar(select(Item).where(Item.url == url, Item.is_demo == task.is_demo).limit(1))
     if existing:
@@ -205,7 +209,7 @@ def finish(task_id, token, results=None, error=None):
                         enqueue(
                             db,
                             kind="ingest",
-                            payload={**result, "provider": task.payload["provider"], "source_type": task.payload.get("source_type","public_tender")},
+                            payload={**result, "provider": task.payload["provider"], "source_type": task.payload.get("source_type","public_tender"), **({"customer_id": task.payload["customer_id"]} if task.payload.get("customer_id") else {})},
                             key=f"child:{task.id}:{i}",
                             parent=task,
                         )
@@ -308,7 +312,7 @@ def recover_expired():
             emit(db, task, f"task.{task.status}", error_code=task.error_code)
 
 
-def dispatch_pending(publish):
+def dispatch_pending(publish, publish_customer=None):
     with Session.begin() as db:
         rows = db.scalars(
             select(Outbox)
@@ -322,6 +326,8 @@ def dispatch_pending(publish):
             .limit(100)
         ).all()
         for row in rows:
-            publish(row.task_id)  # Crash after publish is safe: duplicate execution is fenced.
+            task = db.get(Task, row.task_id)
+            send = publish_customer if publish_customer and task.payload.get("source_type") == "customer_watch" else publish
+            send(row.task_id)  # Crash after publish is safe: duplicate execution is fenced.
             row.publishes += 1
             row.next_publish_at = time.time() + 30  # Reconcile lost broker messages until claimed.

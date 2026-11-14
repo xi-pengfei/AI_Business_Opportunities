@@ -53,6 +53,9 @@ services:
   worker:
     <<: *backend
     command: ["celery", "-A", "scout.worker:app", "worker", "-Q", "collection", "--concurrency=2", "--loglevel=WARNING"]
+  customer-worker:
+    <<: *backend
+    command: ["celery", "-A", "scout.worker:app", "worker", "-Q", "customers", "--concurrency=1", "--loglevel=WARNING"]
   dispatcher:
     <<: *backend
     command: ["python", "-m", "scout.dispatcher"]

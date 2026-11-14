@@ -832,3 +832,24 @@ time {
 .auto-scroll {overscroll-behavior:contain; scroll-behavior:auto;}
 .auto-scroll thead {position:sticky;top:0;z-index:2;background:#1c2127;}
 .auto-scroll:focus-visible {outline:2px solid #70c3ce;outline-offset:2px;}
+
+.customer-monitor { display: grid; gap: 16px; margin-block-start: 16px; min-width: 0; }
+.customer-meta { display: block; color: #a6afb9; margin-block-start: 4px; }
+.customer-filter { display: flex; align-items: center; gap: 10px; max-width: 60%; }
+.customer-filter select { min-width: 0; }
+.customer-monitor form { display: grid; gap: 10px; }
+.customer-monitor form input, .customer-monitor form textarea { font-size: max(1rem, 16px); }
+.customer-monitor form button { min-height: 44px; }
+.customer-table { overflow: auto; max-block-size: 360px; container-type: inline-size; }
+.customer-table:focus-visible { outline: 2px solid #70c3ce; outline-offset: 3px; }
+.customer-table table { min-width: 760px; width: 100%; border-collapse: separate; border-spacing: 0; }
+.customer-table thead { position: sticky; top: 0; z-index: 1; background: #24292f; }
+.customer-table tbody th { text-align: left; font-weight: 400; min-width: 180px; max-width: 240px; }
+.customer-table td:nth-last-child(-n+2) { white-space: nowrap; }
+.customer-table td:nth-child(2) { min-width: 280px; }
+.customer-fragments { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 8px; }
+.customer-fragments span { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #a6afb9; border: 1px solid #353b43; padding: 2px 6px; }
+.customer-evidence { border-top: 1px solid #353b43; margin-block-start: 16px; padding-block-start: 16px; }
+.customer-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+
+.customer-monitor .rule > button { align-self: center; min-height: 44px; }

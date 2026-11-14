@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, update
 
 from scout.db import Session
-from scout.models import Delivery, Item
+from scout.models import CustomerSignal, Delivery, Item
 from scout.quality import ZONE
 
 DAYS = 30
@@ -31,4 +31,8 @@ def archive_expired(sessions=Session, now=None):
             quality_status="archived", quality_reason="unhandled_30_days")).rowcount
         stale = db.execute(update(Item).where(*base, Item.published_at < cutoff).values(
             quality_status="archived", quality_reason="outside_30_days")).rowcount
-    return aged + stale
+        customer_aged = db.execute(update(CustomerSignal).where(
+            CustomerSignal.quality_status == "active",
+            (CustomerSignal.published_at < cutoff) | (CustomerSignal.created_at <= now - DAYS * 86400)
+        ).values(quality_status="archived", quality_reason="outside_30_days")).rowcount
+    return aged + stale + customer_aged

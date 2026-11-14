@@ -24,11 +24,13 @@ def choose(db, rule, engines, now=None, force=False):
     lanes = db.scalars(select(SearchCursor).where(SearchCursor.rule_id == rule.id,
                            SearchCursor.config_version == rule.version)).all()
     existing = {(c.query,c.engine) for c in lanes}
-    planned = set(variants(rule.query))
+    planned = set(line.strip() for line in rule.query.splitlines() if line.strip()) if rule.source_type == "customer_watch" else set(variants(rule.query))
     for query in sorted(planned):
         for engine in engines:
             if (query,engine) not in existing:
-                lane = SearchCursor(rule_id=rule.id,config_version=rule.version,query=query,engine=engine)
+                cooldown = db.scalar(select(func.max(SearchCursor.next_at)).where(
+                    SearchCursor.engine == engine, SearchCursor.outcome.in_(("searxng_rate_limited", "searxng_unavailable")))) or 0
+                lane = SearchCursor(rule_id=rule.id,config_version=rule.version,query=query,engine=engine, next_at=max(0, cooldown if cooldown > now else 0))
                 db.add(lane)
                 lanes.append(lane)
     db.flush()

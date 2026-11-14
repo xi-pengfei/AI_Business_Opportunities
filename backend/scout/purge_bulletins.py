@@ -35,6 +35,8 @@ def purge(sessions=Session):
         for task in db.scalars(select(Task).where(Task.is_demo.is_(False), Task.kind == "ingest",
                                                  Task.status.in_(("succeeded", "failed", "action_required")))).all():
             p = task.payload
+            if p.get("source_type", "public_tender") != "public_tender":
+                continue
             raw = p.get("raw_content")
             if not raw or task.result.get("item_id") in delivered:
                 continue

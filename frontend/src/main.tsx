@@ -6,6 +6,7 @@ import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
 import {SourceFields, Information} from "./FlowPanels";
 import {AutoScroll} from "./AutoScroll";
+import { Customers } from "./Customers";
 import { Spider } from "./Spider";
 import { clock, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
@@ -16,7 +17,7 @@ function App() {
   const [token, setToken] = useState("");
   const [draftToken, setDraftToken] = useState("");
   const [page, setPage] = useState(
-    location.pathname === "/display" ? "display" : "rules",
+    ["display", "rules", "customers", "tasks", "information"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
   );
   const demo = false;
   const [chartSelection, setChartSelection] = useState<ChartSelection | null>(null);
@@ -334,6 +335,7 @@ function App() {
         <nav aria-label="管理导航">
           {[
             ["rules", "采集规则"],
+            ["customers", "客户监测"],
             ["tasks", "任务运行"],
             ["information", "信息库"],
           ].map(([key, label]) => (
@@ -492,9 +494,11 @@ function App() {
             </table></AutoScroll>
             {!data.assigned_items.length && <p className="empty">{data.assignment_status==='not_configured'?'等待接入钉钉群 · 引用消息并 @机器人认领后发送下一条':'暂无已分配信息'}</p>}
           </section>
+          <Customers request={request} />
         </>
       )}
       {!data && <div className="empty">正在读取运行状态…</div>}
+      {!display && page === "customers" && <Customers request={request} manage />}
       {!display && page === "rules" && (
         <div className="rule-layout">
           <section className="panel">

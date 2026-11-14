@@ -13,10 +13,22 @@ class Base(DeclarativeBase):
     pass
 
 
+class Customer(Base):
+    __tablename__ = "customers"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    aliases: Mapped[list] = mapped_column(JSON, default=list)
+    website: Mapped[str | None] = mapped_column(Text)
+    identity_source: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
 class Rule(Base):
     __tablename__ = "monitor_rules"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(120))
+    source_type: Mapped[str] = mapped_column(String(30), default="public_tender", server_default="public_tender")
+    customer_id: Mapped[str | None] = mapped_column(ForeignKey("customers.id"), unique=True)
     query: Mapped[str] = mapped_column(String(500))
     provider: Mapped[str] = mapped_column(String(30), default="tavily")
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -159,3 +171,20 @@ class SearchCursor(Base):
     last_front_at: Mapped[float] = mapped_column(Float, default=0)
     last_result_at: Mapped[float | None] = mapped_column(Float)
     outcome: Mapped[str] = mapped_column(String(40), default="new")
+
+
+class CustomerSignal(Base):
+    __tablename__ = "customer_signals"
+    __table_args__ = (UniqueConstraint("customer_id", "url"), UniqueConstraint("customer_id", "content_hash"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customers.id"), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id"))
+    url: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    topic: Mapped[str] = mapped_column(String(30))
+    matched_name: Mapped[str] = mapped_column(String(120))
+    fragments: Mapped[list] = mapped_column(JSON, default=list)
+    published_at: Mapped[str | None] = mapped_column(String(30))
+    quality_status: Mapped[str] = mapped_column(String(20))
+    quality_reason: Mapped[str | None] = mapped_column(String(50))
+    created_at: Mapped[float] = mapped_column(Float, default=time.time, index=True)

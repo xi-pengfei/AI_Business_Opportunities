@@ -7,6 +7,10 @@ from sqlalchemy import func, select
 from scout.models import Document, Event, Item, Task
 
 
+def public_tasks():
+    return select(Task.id).where(func.coalesce(Task.payload["source_type"].as_string(), "public_tender") == "public_tender")
+
+
 def unique_items(demo):
     ranked = (
         select(
@@ -34,7 +38,7 @@ def chart_facts(db, demo, start):
     )
     # Initial totals preserve the cumulative curve when the time window moves.
     totals = []
-    for model, stamp, extra, buckets in ((Task, Task.created_at, Task.kind == "ingest", capture),):
+    for model, stamp, extra, buckets in ((Task, Task.created_at, (Task.kind == "ingest") & Task.id.in_(public_tasks()), capture),):
         totals.append(
             db.scalar(
                 select(func.count())
@@ -66,13 +70,13 @@ def chart_facts(db, demo, start):
         count * deltas[kind]
         for kind, count in db.execute(
             select(Event.kind, func.count())
-            .where(Event.is_demo == demo, Event.created_at < start, Event.kind.in_(deltas))
+            .where(Event.task_id.in_(public_tasks()), Event.is_demo == demo, Event.created_at < start, Event.kind.in_(deltas))
             .group_by(Event.kind)
         )
     )
     for timestamp, kind in db.execute(
         select(Event.created_at, Event.kind).where(
-            Event.is_demo == demo, Event.created_at >= start, Event.kind.in_(deltas)
+            Event.task_id.in_(public_tasks()), Event.is_demo == demo, Event.created_at >= start, Event.kind.in_(deltas)
         )
     ):
         index = int((timestamp - start) // 60)
@@ -101,7 +105,7 @@ def collector_status(db, demo, role):
     output = []
     for rule in db.scalars(
         select(Rule).where(
-            Rule.enabled.is_(True), Rule.provider == "demo" if demo else Rule.provider != "demo"
+            Rule.enabled.is_(True), Rule.source_type == "public_tender", Rule.provider == "demo" if demo else Rule.provider != "demo"
         )
     ):
         latest = db.scalar(

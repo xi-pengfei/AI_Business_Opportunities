@@ -12,8 +12,18 @@ from sqlalchemy import func, select, text
 from scout.assignments import assignment_facts, pending_items
 from scout.config import settings
 from scout.db import Session
-from scout.display import chart_facts, collector_status, discovery_facts, unique_items
-from scout.models import Attempt, Document, Event, Item, Outbox, Rule, Task
+from scout.display import chart_facts, collector_status, discovery_facts, public_tasks, unique_items
+from scout.models import (
+    Attempt,
+    Customer,
+    CustomerSignal,
+    Document,
+    Event,
+    Item,
+    Outbox,
+    Rule,
+    Task,
+)
 from scout.service import emit, start_rule
 
 app = FastAPI(title="AI商机智能体", version="0.1.0")
@@ -103,7 +113,7 @@ def providers():
 def rules():
     with Session() as db:
         return [
-            record(r) for r in db.scalars(select(Rule).order_by(Rule.created_at.desc()).limit(100))
+            record(r) for r in db.scalars(select(Rule).where(Rule.source_type == "public_tender").order_by(Rule.created_at.desc()).limit(100))
         ]
 
 
@@ -266,20 +276,20 @@ def snapshot(demo: bool = False, current=Depends(role)):
     with Session() as db:
         counts = dict(
             db.execute(
-                select(Task.status, func.count()).where(Task.is_demo == demo).group_by(Task.status)
+                select(Task.status, func.count()).where(Task.id.in_(public_tasks()), Task.is_demo == demo).group_by(Task.status)
             ).all()
         )
         recent = db.scalars(
             pending_items(demo).order_by(Item.created_at.desc(), Item.id).limit(20)
         ).all()
         latest = db.scalars(
-            select(Event).where(Event.is_demo == demo).order_by(Event.id.desc()).limit(30)
+            select(Event).where(Event.task_id.in_(public_tasks()), Event.is_demo == demo).order_by(Event.id.desc()).limit(30)
         ).all()
         # Events are persisted facts; counters never depend on frame rate or animation.
         start = int(now // 60) * 60 - 29 * 60
         events = db.execute(
             select(Event.created_at, Event.kind).where(
-                Event.is_demo == demo,
+                Event.task_id.in_(public_tasks()), Event.is_demo == demo,
                 Event.created_at >= start,
                 Event.kind.in_(["item.created", "task.succeeded", "task.failed"]),
             )
@@ -308,7 +318,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
                 select(Item.region, func.count()).where(Item.id.in_(unique_items(demo).with_only_columns(Item.id)), Item.region.is_not(None)).group_by(Item.region)
             )],
             "region_unknown": db.scalar(select(func.count()).select_from(unique_items(demo).where(Item.region.is_(None)).subquery())),
-            "task_scatter": [{"time": t.created_at, "duration": max(0, (t.updated_at if t.status in ("succeeded", "failed", "action_required") else now) - t.created_at), "status": t.status, "attempts": t.attempts, "kind": t.kind} for t in db.scalars(select(Task).where(Task.is_demo == demo, Task.created_at >= start).order_by(Task.created_at.desc()).limit(300))],
+            "task_scatter": [{"time": t.created_at, "duration": max(0, (t.updated_at if t.status in ("succeeded", "failed", "action_required") else now) - t.created_at), "status": t.status, "attempts": t.attempts, "kind": t.kind} for t in db.scalars(select(Task).where(Task.id.in_(public_tasks()), Task.is_demo == demo, Task.created_at >= start).order_by(Task.created_at.desc()).limit(300))],
             "collectors": collector_status(db, demo, current),
             "items": [
                 record(i)
@@ -347,7 +357,7 @@ async def stream(
                     record(e, ("data",))
                     for e in db.scalars(
                         select(Event)
-                        .where(Event.id > cursor, Event.is_demo == demo)
+                        .where(Event.id > cursor, Event.task_id.in_(public_tasks()), Event.is_demo == demo)
                         .order_by(Event.id)
                         .limit(100)
                     )
@@ -367,3 +377,87 @@ async def stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class CustomerInput(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    aliases: list[str] = Field(default_factory=list, max_length=5)
+    website: str | None = Field(default=None, max_length=1000)
+    identity_source: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value):
+        if len(value.strip()) < 2:
+            raise ValueError("请输入完整客户名称")
+        return value.strip()
+
+    @field_validator("aliases")
+    @classmethod
+    def clean_aliases(cls, value):
+        if any(not 2 <= len(v.strip()) <= 120 for v in value):
+            raise ValueError("简称须为2至120个字")
+        return list(dict.fromkeys(v.strip() for v in value))
+
+    @field_validator("website", "identity_source")
+    @classmethod
+    def safe_url(cls, value):
+        from scout.providers import ProviderError, canonical_url
+        if not value:
+            return None
+        try:
+            return canonical_url(value)
+        except ProviderError:
+            raise ValueError("请输入有效的公开网址") from None
+
+
+@app.get("/api/v1/customers", dependencies=[Depends(admin)])
+def list_customers():
+    from scout.customers import customer_records
+    with Session() as db:
+        return customer_records(db)
+
+
+@app.post("/api/v1/customers", status_code=201, dependencies=[Depends(admin)])
+def create_customer(body: CustomerInput):
+    from sqlalchemy.exc import IntegrityError
+
+    from scout.customers import queries
+    try:
+        with Session.begin() as db:
+            customer = Customer(**body.model_dump())
+            db.add(customer)
+            db.flush()
+            rule = Rule(name=customer.name, query=queries(customer), provider="searxng",
+                source_type="customer_watch", customer_id=customer.id, enabled=True,
+                interval_seconds=0, max_results=20)
+            db.add(rule)
+            db.flush()
+            return {**record(customer), "rule_id": rule.id, "enabled": True}
+    except IntegrityError:
+        raise HTTPException(409, "此客户已存在，请直接查看或启用现有监测") from None
+
+
+@app.get("/api/v1/customer-signals")
+def customer_signals(customer_id: str | None = None, offset: int = Query(0, ge=0), current=Depends(role)):
+    from scout.customers import signal_window
+    with Session() as db:
+        query = select(CustomerSignal, Customer, Document).join(Customer, Customer.id == CustomerSignal.customer_id).join(Document, Document.id == CustomerSignal.document_id).where(*signal_window())
+        if customer_id:
+            query = query.where(Customer.id == customer_id)
+        total = db.scalar(select(func.count()).select_from(query.subquery()))
+        rows = db.execute(query.order_by(CustomerSignal.created_at.desc(), CustomerSignal.id).offset(offset).limit(30))
+        return {"total": total, "items": [
+            {**record(s), "customer_name": c.name, "title": d.title, "content_kind": d.content_kind}
+            if current == "admin" else {"id": s.id, "customer_name": "客户已脱敏", "title": "客户动态已脱敏",
+                "topic": s.topic, "published_at": s.published_at, "created_at": s.created_at}
+            for s, c, d in rows]}
+
+
+@app.get("/api/v1/customer-signals/{signal_id}", dependencies=[Depends(admin)])
+def customer_signal_detail(signal_id: str):
+    with Session() as db:
+        signal = db.get(CustomerSignal, signal_id)
+        if not signal:
+            raise HTTPException(404, "客户动态不存在")
+        return {**record(signal), "evidence": record(db.get(Document, signal.document_id))}
