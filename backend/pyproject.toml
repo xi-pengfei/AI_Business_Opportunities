@@ -13,6 +13,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "beautifulsoup4>=4.12,<5",
   "dingtalk-stream>=0.24,<1",
+  "python-socks[asyncio]>=2.7,<3",
 ]
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
