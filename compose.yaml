@@ -11,7 +11,7 @@ x-backend: &backend
   restart: unless-stopped
 services:
   searxng:
-    image: docker.io/searxng/searxng:latest
+    image: ghcr.io/searxng/searxng@sha256:eb8b09ffa83aebbe8b8d3ded23cfd224b2d3b01db4f3af9eb03876ef6def6dda
     environment:
       SEARXNG_SECRET: ${SEARXNG_SECRET:?Run scripts/setup.sh first}
     volumes:
