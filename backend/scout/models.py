@@ -90,6 +90,11 @@ class Item(Base):
     url: Mapped[str] = mapped_column(Text)
     text: Mapped[str] = mapped_column(Text)
     contacts: Mapped[list] = mapped_column(JSON, default=list)
+    quality_status: Mapped[str] = mapped_column(String(20), default="active", server_default="active")
+    quality_reason: Mapped[str | None] = mapped_column(String(50))
+    region: Mapped[str | None] = mapped_column(String(20))
+    region_evidence: Mapped[str | None] = mapped_column(String(100))
+    published_at: Mapped[str | None] = mapped_column(String(30))
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[float] = mapped_column(Float, default=time.time, index=True)
 

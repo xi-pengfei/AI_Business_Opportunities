@@ -103,3 +103,28 @@ def test_chart_days_dedupe_and_filtered_evidence_permissions(client, database, m
     assert client.get(path + "&offset=50").json()["items"] == []
     assert client.get("/api/v1/display/items?start=2&end=1").status_code == 422
     assert client.get(path, headers={"Authorization": "Bearer wrong"}).status_code == 401
+
+
+def test_feed_cursor_and_map_exclude_archived_records(client, database):
+    from scout.models import Document, Item
+
+    with database.begin() as db:
+        for key, archived in [("a", False), ("b", False), ("c", True)]:
+            doc = Document(id=key, identity=key, url=f"https://example.org/{key}", title="湖北采购",
+                           raw_content="建设系统", content_kind="search_excerpt", content_hash=key,
+                           provider="searxng", is_demo=False)
+            db.add(doc)
+            db.flush()
+            db.add(Item(id=key, document_id=key, title="湖北采购", url=doc.url, text="建设系统",
+                        created_at=100, is_demo=False, region="湖北", region_evidence="湖北采购",
+                        quality_status="archived" if archived else "active"))
+    feed = client.get("/api/v1/display/feed?after=100&after_id=a").json()
+    assert [i["id"] for i in feed["items"]] == ["b"]
+    assert feed["after_id"] == "b"
+    assert client.get("/api/v1/display/feed?after=100&after_id=b").json()["items"] == []
+    public = client.get("/api/v1/display/feed?after=0", headers={"Authorization": "Bearer test-display"}).json()
+    assert "text" not in public["items"][0]
+    assert "url" not in public["items"][0]
+    assert len(client.get("/api/v1/items").json()) == 2
+    assert client.get("/api/v1/display/items?start=0&end=101&region=湖北").json()["total"] == 2
+    assert client.get("/api/v1/display/items?start=0&end=101&region=广东").json()["total"] == 0

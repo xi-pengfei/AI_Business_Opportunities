@@ -8,6 +8,7 @@ from scout.config import settings
 from scout.db import Session
 from scout.models import Attempt, Document, Event, Item, Outbox, Rule, Task, uid
 from scout.providers import ProviderError, canonical_url, clean_text, search
+from scout.quality import describe
 
 
 def emit(db, task, kind, **data):
@@ -123,6 +124,7 @@ def save_item(db, task):
     text = clean_text(raw)
     if not text:
         raise ProviderError("empty_content")
+    quality = describe(p["title"], raw, p.get("published_at"))
     fingerprint = hashlib.sha256(text.encode()).hexdigest()
     identity = hashlib.sha256(f"{task.is_demo}|{url}".encode()).hexdigest()
     # Savepoint handles concurrent workers seeing the same URL/content.
@@ -157,7 +159,12 @@ def save_item(db, task):
                 document_id=doc.id,
                 title=p["title"],
                 url=url,
-                text=text,
+                text=quality["text"],
+                quality_status=quality["quality_status"],
+                quality_reason=quality["quality_reason"],
+                region=quality["region"],
+                region_evidence=quality["region_evidence"],
+                published_at=quality["published_at"],
                 contacts=contacts,
                 is_demo=task.is_demo,
             )
@@ -170,7 +177,7 @@ def save_item(db, task):
         item = db.scalar(select(Item).where(Item.document_id == doc.id))
         emit(db, task, "item.duplicate", item_id=item.id)
         return {"item_id": item.id, "duplicate": True}
-    emit(db, task, "item.created", item_id=item.id)
+    emit(db, task, "item.created" if item.quality_status == "active" else "item.filtered", item_id=item.id)
     return {"item_id": item.id, "duplicate": False}
 
 

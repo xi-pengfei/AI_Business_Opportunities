@@ -111,6 +111,9 @@ def search_searxng(payload, config):
     """Administrator-configured service; result URLs are evidence, never fetched here."""
     if not config.searxng_url:
         raise ProviderError("searxng_not_configured", True)
+    engines = {e.strip() for e in getattr(config, "searxng_engines", "bing,duckduckgo").split(",") if e.strip()}
+    if not engines:
+        raise ProviderError("searxng_not_configured", True)
     try:
         with httpx.Client(timeout=httpx.Timeout(25, connect=5), trust_env=False) as client:
             response = client.get(
@@ -120,7 +123,9 @@ def search_searxng(payload, config):
                     "format": "json",
                     "language": "zh-CN",
                     "categories": "general",
+                    "engines": ",".join(sorted(engines)),
                     "pageno": payload.get("page", 1),
+                    "time_range": "month",
                 },
             )
         response.raise_for_status()
@@ -128,7 +133,8 @@ def search_searxng(payload, config):
         results = data.get("results")
         if not isinstance(results, list):
             raise ValueError()
-        if not results and data.get("unresponsive_engines"):
+        failed = {row[0] for row in data.get("unresponsive_engines", []) if isinstance(row, list) and row}
+        if not results and engines.issubset(failed):
             raise ProviderError("searxng_engines_unavailable")
         return [
             {
@@ -136,7 +142,7 @@ def search_searxng(payload, config):
                 "url": str(r.get("url") or ""),
                 "raw_content": str(r.get("content") or r.get("title") or "")[:200000],
                 "content_kind": "search_excerpt",
-                "published_at": None,
+                "published_at": str(r.get("publishedDate") or r.get("published_date") or "") or None,
             }
             for r in results
             if isinstance(r, dict) and r.get("url")

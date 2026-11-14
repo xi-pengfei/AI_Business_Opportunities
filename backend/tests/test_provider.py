@@ -83,7 +83,7 @@ def test_searxng_engine_failure_is_retryable_and_never_calls_paid_provider(monke
     def handle(request):
         calls.append(request.url.host)
         return httpx.Response(
-            200, json={"results": [], "unresponsive_engines": [["bing", "timeout"]]}
+            200, json={"results": [], "unresponsive_engines": [["bing", "timeout"], ["duckduckgo", "timeout"]]}
         )
 
     monkeypatch.setattr(
@@ -99,3 +99,13 @@ def test_searxng_engine_failure_is_retryable_and_never_calls_paid_provider(monke
     assert error.value.code == "searxng_engines_unavailable"
     assert not error.value.action_required
     assert calls == ["searxng"]
+
+
+def test_one_engine_failure_does_not_turn_valid_empty_search_into_retry(monkeypatch):
+    original = httpx.Client
+    monkeypatch.setattr(providers.httpx, "Client", lambda **kwargs: original(
+        transport=httpx.MockTransport(lambda request: httpx.Response(
+            200, json={"results": [], "unresponsive_engines": [["duckduckgo", "timeout"]]}
+        )), **kwargs))
+    assert providers.search({"provider": "searxng", "query": "rare phrase"},
+                            SimpleNamespace(searxng_url="http://searxng:8080")) == []

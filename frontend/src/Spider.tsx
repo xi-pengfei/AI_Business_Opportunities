@@ -4,12 +4,16 @@ import type { Item } from "./types";
 export function Spider({
   item,
   searching = false,
+  onDelivered,
 }: {
   item: Item | null;
   searching?: boolean;
+  onDelivered: () => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const delivered = useRef<string | null>(null);
+  const state = useRef({searching, onDelivered});
+  state.current = {searching, onDelivered};
+  const delivery = useRef<{id: string | null; start: number; done: boolean}>({id: null, start: 0, done: false});
   const [size, setSize] = useState("");
   useEffect(() => {
     const parent = ref.current?.parentElement;
@@ -21,11 +25,17 @@ export function Spider({
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    const cargo = item && item.id !== delivered.current ? item : null;
-    if (cargo) delivered.current = cargo.id;
+    const cargo = item;
+    if (delivery.current.id !== item?.id) delivery.current = {id: item?.id || null, start: 0, done: false};
     const canvas = ref.current;
-    if (!canvas || matchMedia("(prefers-reduced-motion: reduce)").matches)
+    if (!canvas) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (cargo && !delivery.current.done) {
+        const timer = setTimeout(() => { delivery.current.done = true; state.current.onDelivered(); }, 50);
+        return () => clearTimeout(timer);
+      }
       return;
+    }
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const parent = canvas.parentElement!;
@@ -35,19 +45,20 @@ export function Spider({
     canvas.height = r.height * ratio;
     ctx.scale(ratio, ratio);
     const small = r.width < 700;
-    const from = { x: Math.min(150, r.width / 4), y: 170 },
-      to = { x: small ? r.width * 0.6 : r.width * 0.55, y: small ? 420 : 170 };
+    const from = { x: Math.min(190, r.width / 5), y: 200 },
+      to = { x: small ? r.width * 0.6 : r.width * 0.62, y: small ? 440 : 200 };
     let raf = 0,
       start = 0;
     const feet = Array.from({ length: 8 }, () => ({ x: 0, y: 0, init: false }));
     function draw(now: number) {
       if (!ctx || !canvas) return;
       if (!start) start = now;
+      if (cargo && !delivery.current.start) delivery.current.start = now;
       const elapsed = (now - start) / 1000;
-      const p = cargo ? Math.min(1, elapsed / 7) : 0;
+      const p = cargo ? Math.min(1, (now - delivery.current.start) / 4500) : 0;
       const travel =
-          (!cargo || p >= 1) && searching
-            ? (1 - Math.cos(elapsed * 0.7)) * 0.12
+          (!cargo || p >= 1) && state.current.searching
+            ? (1 - Math.cos(elapsed * 0.7)) * 0.45
             : p > 0.82
               ? Math.max(0, (1 - p) / 0.18)
               : Math.max(0, Math.min(1, (p - 0.15) / 0.6)),
@@ -122,13 +133,17 @@ export function Spider({
         ctx.fillStyle = "#10181d";
         ctx.fillText(message, Math.min(x, r.width - tw) + 8, y + 41, tw - 16);
       }
-      if ((cargo && p < 1) || searching) raf = requestAnimationFrame(draw);
+      if (cargo && p >= 1 && !delivery.current.done) {
+        delivery.current.done = true;
+        state.current.onDelivered();
+      }
+      raf = requestAnimationFrame(draw);
     }
     raf = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(raf);
       ctx.clearRect(0, 0, r.width, r.height);
     };
-  }, [item, size, searching]);
+  }, [item?.id, size]);
   return <canvas className="spider" ref={ref} aria-hidden="true" />;
 }

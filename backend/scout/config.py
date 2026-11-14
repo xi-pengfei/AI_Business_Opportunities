@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     admin_token: str = ""
     display_token: str = ""
     tavily_api_key: str = ""
+    searxng_engines: str = "bing,duckduckgo"
     searxng_url: str = "http://searxng:8080"
     allow_demo: bool = False
     lease_seconds: int = Field(default=180, ge=150)

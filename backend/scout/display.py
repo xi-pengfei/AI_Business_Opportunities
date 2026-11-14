@@ -13,7 +13,7 @@ def unique_items(demo):
             .over(partition_by=Item.url, order_by=(Item.created_at.asc(), Item.id))
             .label("position"),
         )
-        .where(Item.is_demo == demo)
+        .where(Item.is_demo == demo, Item.quality_status == "active")
         .subquery()
     )
     return select(Item).join(ranked, Item.id == ranked.c.id).where(ranked.c.position == 1)
@@ -26,7 +26,7 @@ def chart_facts(db, demo, start):
     waiting = [0] * 30
     first_seen = (
         select(Item.url, func.min(Item.created_at).label("created_at"))
-        .where(Item.is_demo == demo)
+        .where(Item.is_demo == demo, Item.quality_status == "active")
         .group_by(Item.url)
         .subquery()
     )
@@ -85,7 +85,7 @@ def chart_facts(db, demo, start):
     sources = db.execute(
         select(Document.provider, func.count(func.distinct(Item.url)))
         .join(Item, Item.document_id == Document.id)
-        .where(Item.is_demo == demo)
+        .where(Item.is_demo == demo, Item.quality_status == "active")
         .group_by(Document.provider)
     ).all()
     return {"collection_history": history, "source_counts": dict(sources)}

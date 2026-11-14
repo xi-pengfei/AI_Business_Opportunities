@@ -221,6 +221,7 @@ def display_items(
     start: float = Query(ge=0, allow_inf_nan=False),
     end: float = Query(ge=0, allow_inf_nan=False),
     provider: str | None = Query(default=None, max_length=80),
+    region: str | None = Query(default=None, max_length=20),
     offset: int = Query(0, ge=0),
     demo: bool = False,
     current=Depends(role),
@@ -229,6 +230,8 @@ def display_items(
         raise HTTPException(422, "请选择90天以内的有效时间范围")
     with Session() as db:
         query = unique_items(demo).where(Item.created_at >= start, Item.created_at < end)
+        if region:
+            query = query.where(Item.region == region)
         if provider:
             query = query.join(Document, Item.document_id == Document.id).where(
                 Document.provider == provider
@@ -241,6 +244,18 @@ def display_items(
         } for i in rows]}
 
 
+@app.get("/api/v1/display/feed")
+def display_feed(after: float = Query(ge=0, allow_inf_nan=False), after_id: str = "", current=Depends(role)):
+    with Session() as db:
+        rows = db.scalars(unique_items(False).where(
+            (Item.created_at > after) | ((Item.created_at == after) & (Item.id > after_id))
+        ).order_by(Item.created_at, Item.id).limit(100)).all()
+        return {"items": [record(i) if current == "admin" else {
+            "id": i.id, "title": "已归集信息", "created_at": i.created_at, "is_demo": False,
+        } for i in rows], "after": rows[-1].created_at if rows else after,
+            "after_id": rows[-1].id if rows else after_id}
+
+
 @app.get("/api/v1/display/snapshot")
 def snapshot(demo: bool = False, current=Depends(role)):
     now = time.time()
@@ -251,7 +266,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             ).all()
         )
         recent = db.scalars(
-            unique_items(demo).order_by(Item.created_at.desc(), Item.id).limit(8)
+            unique_items(demo).order_by(Item.created_at.desc(), Item.id).limit(20)
         ).all()
         latest = db.scalars(
             select(Event).where(Event.is_demo == demo).order_by(Event.id.desc()).limit(30)
@@ -278,11 +293,17 @@ def snapshot(demo: bool = False, current=Depends(role)):
             "cursor": max((e.id for e in latest), default=0),
             "task_counts": counts,
             "item_count": db.scalar(
-                select(func.count(func.distinct(Item.url))).where(Item.is_demo == demo)
+                select(func.count(func.distinct(Item.url))).where(Item.is_demo == demo, Item.quality_status == "active")
             ),
             "trend": buckets,
             **chart_facts(db, demo, start),
             **discovery_facts(db, demo, now),
+            "delivery": {"available": False, "sent": None},
+            "regions": [{"name": r, "count": n} for r, n in db.execute(
+                select(Item.region, func.count()).where(Item.id.in_(unique_items(demo).with_only_columns(Item.id)), Item.region.is_not(None)).group_by(Item.region)
+            )],
+            "region_unknown": db.scalar(select(func.count()).select_from(unique_items(demo).where(Item.region.is_(None)).subquery())),
+            "task_scatter": [{"time": t.created_at, "duration": max(0, (t.updated_at if t.status in ("succeeded", "failed", "action_required") else now) - t.created_at), "status": t.status, "attempts": t.attempts, "kind": t.kind} for t in db.scalars(select(Task).where(Task.is_demo == demo, Task.created_at >= start).order_by(Task.created_at.desc()).limit(300))],
             "collectors": collector_status(db, demo, current),
             "items": [
                 record(i)

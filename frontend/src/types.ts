@@ -6,6 +6,9 @@ export type Item = {
   contacts?: { type: string; value: string }[];
   created_at: number;
   is_demo: boolean;
+  region?: string;
+  region_evidence?: string;
+  published_at?: string;
 };
 export type Execution = {
   id: number;
@@ -15,6 +18,10 @@ export type Execution = {
   is_demo: boolean;
 };
 export type Snapshot = {
+  delivery: { available: boolean; sent: number | null };
+  regions: { name: string; count: number }[];
+  region_unknown: number;
+  task_scatter: { time: number; duration: number; status: string; attempts: number; kind: string }[];
   collectors: {
     id: string;
     name: string;

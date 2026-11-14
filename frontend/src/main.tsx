@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { Charts } from "./Charts";
 import type { ChartSelection } from "./Charts";
+import { RegionMap } from "./RegionMap";
 import { Spider } from "./Spider";
 import { clock, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
@@ -34,9 +35,25 @@ function App() {
     (Item & { evidence: { raw_content: string; content_kind: string } }) | null
   >(null);
   const [moving, setMoving] = useState<Item | null>(null);
+  const cargoQueue = useRef<Item[]>([]);
+  const activeCargo = useRef(false);
+  const feedCursor = useRef<{after: number; after_id: string} | null>(null);
+  const [terminalFeed, setTerminalFeed] = useState<Item[]>([]);
+  const terminalScroll = useRef<HTMLDivElement>(null);
+  const nextCargo = useCallback(() => {
+    const next = cargoQueue.current.shift() || null;
+    activeCargo.current = !!next;
+    setMoving(next);
+    if (next) setTerminalFeed(old => [...old.slice(-5), next]);
+  }, []);
+  useEffect(() => {
+    const box = terminalScroll.current;
+    if (box) box.scrollTo({top: box.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth"});
+  }, [terminalFeed]);
   const seen = useRef(new Set<string>()),
     hydrated = useRef(false);
   const [streamState, setStreamState] = useState("连接中");
+  const refreshing = useRef(false);
   const activeView = useRef("");
   activeView.current = `${token}:${demo}:${page}`;
   const request = useCallback(
@@ -63,7 +80,8 @@ function App() {
     [token],
   );
   const refresh = useCallback(async () => {
-    if (!token) return;
+    if (!token || refreshing.current) return;
+    refreshing.current = true;
     const viewKey = `${token}:${demo}:${page}`;
     try {
       const snapshot: Snapshot = await request(
@@ -73,11 +91,17 @@ function App() {
       setData(snapshot);
       setConnected(true);
       setConnectionError("");
-      if (hydrated.current) {
-        const fresh = snapshot.items.find((i) => !seen.current.has(i.id));
-        if (fresh) setMoving(fresh);
+      if (!hydrated.current) {
+        feedCursor.current = {after: snapshot.server_time, after_id: ""};
+        setTerminalFeed(snapshot.items.slice(0, 3).reverse());
+      } else if (feedCursor.current && cargoQueue.current.length < 200) {
+        const cursor = feedCursor.current;
+        const feed = await request(`/display/feed?after=${cursor.after}&after_id=${encodeURIComponent(cursor.after_id)}`);
+        if (activeView.current !== viewKey) return;
+        feedCursor.current = {after: feed.after, after_id: feed.after_id};
+        cargoQueue.current.push(...feed.items);
+        if (!activeCargo.current) nextCargo();
       }
-      snapshot.items.forEach((i) => seen.current.add(i.id));
       hydrated.current = true;
       if (page !== "display") {
         const [r, t, i, p] = await Promise.all([
@@ -96,13 +120,16 @@ function App() {
       if (activeView.current !== viewKey) return;
       setConnected(false);
       setConnectionError("连接暂时中断，正在自动重连");
+    } finally {
+      refreshing.current = false;
     }
-  }, [token, demo, page, request]);
+  }, [token, demo, page, request, nextCargo]);
   useEffect(() => {
     setChartSelection(null);
     hydrated.current = false;
     seen.current.clear();
     setMoving(null);
+    cargoQueue.current = []; activeCargo.current = false; feedCursor.current = null; setTerminalFeed([]);
     setData(null);
   }, [demo, token]);
   useEffect(() => {
@@ -253,7 +280,7 @@ function App() {
       </main>
     );
   const display = page === "display";
-  const source = moving || data?.items[0];
+
   return (
     <main className={display ? "screen" : "workspace"}>
       <header className="mast">
@@ -319,7 +346,7 @@ function App() {
       {display && data && (
         <>
           <Charts data={data} onSelect={setChartSelection} />
-          {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}`}
+          {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
             selection={chartSelection} request={request} close={() => setChartSelection(null)}
             open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
 
@@ -354,7 +381,7 @@ function App() {
                       max={c.total}
                     />
                   )}
-                  {c.error_code && (
+                  {c.error_code && ["retry_wait", "failed", "action_required"].includes(c.state) && (
                     <small>{errors[c.error_code] || c.error_code}</small>
                   )}
                 </section>
@@ -366,26 +393,20 @@ function App() {
           <div className="workfield">
             <section className="panel terminal">
               <h2>来源终端</h2>
-              {source && (
-                <div className="source-preview">
-                  {source.url && (
-                    <a
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {source.url}
-                    </a>
-                  )}
-                  <h3>{source.title}</h3>
-                  <p>{source.text?.slice(0, 180)}</p>
-                </div>
-              )}
+              <div className="terminal-feed" ref={terminalScroll}>
+                {terminalFeed.map(entry => <article className={`source-preview ${moving?.id === entry.id ? "cargo-source" : ""}`} key={entry.id}>
+                  <small>{clock(entry.created_at)} · 已读取</small>
+                  {entry.url && <a href={entry.url} target="_blank" rel="noopener noreferrer">{entry.url}</a>}
+                  <h3>{entry.title}</h3><p>{entry.text || "摘要已脱敏"}</p>
+                </article>)}
+              </div>
               <p>
                 {data.collectors?.some((c) => c.state === "running")
                   ? "正在搜索新来源"
                   : data.collectors?.some((c) => c.state === "cleaning")
                     ? "正在清洗本批信息"
+                    : data.collectors?.some(c => c.state === "retry_wait")
+                      ? "搜索服务等待重试"
                     : data.collectors?.some(
                           (c) => c.state === "action_required",
                         )
@@ -429,14 +450,16 @@ function App() {
             </section>
             <Spider
               item={moving}
+              onDelivered={nextCargo}
               searching={
                 connected &&
                 !!data.collectors?.some((c) =>
-                  ["queued", "running", "cleaning"].includes(c.state),
+                  ["queued", "running", "cleaning", "retry_wait", "next_batch"].includes(c.state),
                 )
               }
             />
           </div>
+          <RegionMap data={data} onSelect={setChartSelection} />
           <section className="panel handoff">
             <h2>分配与接收</h2>
             <div className="table-scroll">
@@ -678,6 +701,7 @@ function App() {
           <a href={detail.url} target="_blank" rel="noopener noreferrer">
             查看原始网址
           </a>
+          {detail.region_evidence && <p>地区依据：{detail.region_evidence}</p>}
           <pre>{detail.evidence.raw_content}</pre>
         </section>
       )}
@@ -705,6 +729,7 @@ function ChartRecords({ selection, request, close, open }: {
     setResult(null); setError("");
     const params = new URLSearchParams({ start: String(selection.start), end: String(selection.end), offset: String(offset) });
     if (selection.provider) params.set("provider", selection.provider);
+    if (selection.region) params.set("region", selection.region);
     request(`/display/items?${params}`).then(r => { if (active) setResult(r); })
       .catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
@@ -733,7 +758,7 @@ function Information({
         <table>
           <thead>
             <tr>
-              <th>信息原文</th>
+              <th>标题与摘要</th>
               <th>原始网址</th>
               <th>联系方式</th>
             </tr>
@@ -750,7 +775,8 @@ function Information({
                     <span>{item.title}</span>
                   )}
                   <p className="excerpt">{item.text?.slice(0, 160)}</p>
-                  <small>{clock(item.created_at)}</small>
+                  <small>{item.published_at ? `发布 ${item.published_at}` : "发布日期待确认"}{item.region ? ` · ${item.region}` : ""}</small>
+                  {item.region_evidence && <small className="region-evidence">地区依据：{item.region_evidence}</small>}
                 </td>
                 <td>
                   {item.url ? (

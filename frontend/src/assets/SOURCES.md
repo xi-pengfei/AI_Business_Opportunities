@@ -1,0 +1,1 @@
+Province boundary GeoJSON: Alibaba Cloud DataV, retrieved 2026-11-14 from https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json . Preserved without editing the geometry. Used for province-level aggregated information, not precise company locations.
