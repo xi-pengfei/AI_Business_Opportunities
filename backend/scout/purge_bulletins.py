@@ -6,8 +6,8 @@ from sqlalchemy import select
 
 from scout.db import Session
 from scout.models import Delivery, Document, Item, RemovedEvidence, Task
+from scout.policies import describe_public_tender
 from scout.providers import canonical_url, clean_text
-from scout.quality import describe
 
 
 def discarded_payload(provider, reason="not_opportunity"):
@@ -39,7 +39,7 @@ def purge(sessions=Session):
             if not raw or task.result.get("item_id") in delivered:
                 continue
             removed = task.result.get("item_id") in removed_ids or hashlib.sha256(clean_text(raw).encode()).hexdigest() in hashes
-            bulletin = describe(p.get("title", ""), raw, p.get("published_at"))["information_kind"] == "bulletin"
+            bulletin = describe_public_tender(p.get("title", ""), raw, p.get("published_at"))["information_kind"] == "bulletin"
             if removed or bulletin:
                 task.payload = discarded_payload(p.get("provider"), "removed_information")
                 task.result = {"discarded": True, "reason": "removed_information"}

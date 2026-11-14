@@ -13,7 +13,10 @@ RECHECK_SECONDS = 300
 def variants(query):
     seeds = list(dict.fromkeys(line.strip() for line in query.splitlines() if line.strip()))
     topics = list(dict.fromkeys(re.findall(r"ERP|MES|WMS|信息化|数字化|智能体|软件定制|人工智能|AI", query, re.I)))
-    return list(dict.fromkeys(seeds + [f"{topic} {intent}" for topic in topics for intent in ("采购公告", "升级改造", "建设需求")]))
+    tender_seeds = [s for s in seeds if re.search(r"采购|招标|投标|询价|磋商",s)]
+    if not topics and not tender_seeds:
+        tender_seeds = [f"{s} 采购公告" for s in seeds]
+    return list(dict.fromkeys(tender_seeds + [f"{topic} {intent}" for topic in topics for intent in ("采购公告", "招标公告", "采购意向")]))
 
 
 def choose(db, rule, engines, now=None, force=False):
@@ -21,16 +24,17 @@ def choose(db, rule, engines, now=None, force=False):
     lanes = db.scalars(select(SearchCursor).where(SearchCursor.rule_id == rule.id,
                            SearchCursor.config_version == rule.version)).all()
     existing = {(c.query,c.engine) for c in lanes}
-    for query in variants(rule.query):
+    planned = set(variants(rule.query))
+    for query in sorted(planned):
         for engine in engines:
             if (query,engine) not in existing:
                 lane = SearchCursor(rule_id=rule.id,config_version=rule.version,query=query,engine=engine)
                 db.add(lane)
                 lanes.append(lane)
     db.flush()
-    eligible = [c for c in lanes if c.engine in engines and (force or c.next_at <= now)]
+    eligible = [c for c in lanes if c.engine in engines and c.query in planned and (force or c.next_at <= now)]
     if not eligible:
-        rule.next_run_at = min((c.next_at for c in lanes if c.engine in engines), default=now+RECHECK_SECONDS)
+        rule.next_run_at = min((c.next_at for c in lanes if c.engine in engines and c.query in planned), default=now+RECHECK_SECONDS)
         return None
     lane = min(eligible,key=lambda c:(c.next_at,c.last_front_at,c.query,c.engine))
     if lane.last_front_at and now-lane.last_front_at >= RECHECK_SECONDS:

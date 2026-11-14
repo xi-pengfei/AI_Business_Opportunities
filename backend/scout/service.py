@@ -61,6 +61,7 @@ def start_rule(db, rule, key, scheduled=False):
         payload={
             "query": query,
             "provider": rule.provider,
+            "source_type": "public_tender",
             "max_results": rule.max_results,
             "page": lane.page if lane else 1,
             **({"engine":lane.engine,"search_cursor_id":lane.id} if lane else {}),
@@ -111,7 +112,11 @@ def save_item(db, task):
         task.payload = discarded_payload(p.get("provider"), "removed_information")
         emit(db, task, "item.discarded", reason="removed_information")
         return {"discarded": True, "reason": "removed_information"}
-    quality = describe(p["title"], raw, p.get("published_at"))
+    from scout.policies import describe_public_tender
+
+    if not task.is_demo and p.get("source_type", "public_tender") != "public_tender":
+        raise ProviderError("source_policy_not_connected", True)
+    quality = (describe if task.is_demo else describe_public_tender)(p["title"], raw, p.get("published_at"))
     if not task.is_demo and quality["information_kind"] == "bulletin":
         from scout.purge_bulletins import discarded_payload
 
@@ -200,7 +205,7 @@ def finish(task_id, token, results=None, error=None):
                         enqueue(
                             db,
                             kind="ingest",
-                            payload={**result, "provider": task.payload["provider"]},
+                            payload={**result, "provider": task.payload["provider"], "source_type": task.payload.get("source_type","public_tender")},
                             key=f"child:{task.id}:{i}",
                             parent=task,
                         )

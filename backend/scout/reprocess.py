@@ -7,8 +7,9 @@ from sqlalchemy import select
 
 from scout.db import Session
 from scout.models import Delivery, Document, Item
+from scout.policies import describe_public_tender
 from scout.providers import canonical_url
-from scout.quality import ZONE, describe
+from scout.quality import ZONE
 
 
 def reprocess(sessions=Session, now=None):
@@ -20,7 +21,7 @@ def reprocess(sessions=Session, now=None):
         rows = db.execute(select(Item, Document).join(Document, Item.document_id == Document.id)
                           .where(Item.is_demo.is_(False)).order_by(Item.created_at, Item.id))
         for item, doc in rows:
-            result = describe(doc.title, doc.raw_content, doc.published_at, datetime.fromtimestamp(now, ZONE))
+            result = describe_public_tender(doc.title, doc.raw_content, doc.published_at, datetime.fromtimestamp(now, ZONE))
             url = canonical_url(doc.url)
             if url in urls or doc.content_hash in hashes:
                 result.update(quality_status="archived", quality_reason="duplicate_information")
