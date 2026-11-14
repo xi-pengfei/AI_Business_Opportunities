@@ -1,0 +1,241 @@
+import hashlib
+import re
+import time
+
+from sqlalchemy import select
+
+from scout.config import settings
+from scout.db import Session
+from scout.models import Attempt, Document, Event, Item, Outbox, Rule, Task, uid
+from scout.providers import ProviderError, canonical_url, clean_text, search
+
+
+def emit(db, task, kind, **data):
+    db.add(Event(task_id=task.id, kind=kind, is_demo=task.is_demo, data=data))
+
+
+def enqueue(db, *, kind, payload, key, rule=None, parent=None):
+    existing = db.scalar(select(Task).where(Task.idempotency_key == key))
+    if existing:
+        return existing
+    task = Task(
+        kind=kind,
+        payload=payload,
+        idempotency_key=key,
+        rule_id=rule.id if rule else (parent.rule_id if parent else None),
+        parent_id=parent.id if parent else None,
+        config_version=rule.version if rule else (parent.config_version if parent else 1),
+        is_demo=payload.get("provider") == "demo",
+        attempt_limit=settings().max_attempts,
+    )
+    db.add(task)
+    db.flush()
+    db.add(Outbox(task_id=task.id))
+    emit(db, task, "task.queued", stage=kind)
+    return task
+
+
+def start_rule(db, rule, key):
+    return enqueue(
+        db,
+        kind="search",
+        payload={"query": rule.query, "provider": rule.provider, "max_results": rule.max_results},
+        key=key,
+        rule=rule,
+    )
+
+
+def claim(task_id):
+    now = time.time()
+    with Session.begin() as db:
+        task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
+        if not task or task.status not in ("queued", "retry_wait") or task.available_at > now:
+            return None
+        task.status = "running"
+        task.attempts += 1
+        task.lease_token = uid()
+        task.lease_until = now + settings().lease_seconds
+        task.updated_at = now
+        db.add(Attempt(task_id=task.id, number=task.attempts))
+        emit(db, task, "task.running", stage=task.kind)
+        return task.lease_token, task.kind, task.payload
+
+
+def save_item(db, task):
+    p = task.payload
+    url = canonical_url(p["url"])
+    raw = p["raw_content"]
+    text = clean_text(raw)
+    if not text:
+        raise ProviderError("empty_content")
+    fingerprint = hashlib.sha256(text.encode()).hexdigest()
+    identity = hashlib.sha256(f"{task.is_demo}|{url}|{fingerprint}".encode()).hexdigest()
+    # Savepoint handles concurrent workers seeing the same URL/content.
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        with db.begin_nested():
+            doc = Document(
+                identity=identity,
+                url=url,
+                title=p["title"],
+                raw_content=raw,
+                content_kind=p["content_kind"],
+                content_hash=fingerprint,
+                provider=p["provider"],
+                published_at=p.get("published_at"),
+                is_demo=task.is_demo,
+            )
+            db.add(doc)
+            db.flush()
+            contacts = [
+                {"type": "email", "value": v}
+                for v in sorted(
+                    set(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text))
+                )[:20]
+            ]
+            contacts += [
+                {"type": "phone", "value": v}
+                for v in sorted(set(re.findall(r"(?<!\d)1[3-9]\d{9}(?!\d)", text)))[:20]
+            ]
+            item = Item(
+                document_id=doc.id,
+                title=p["title"],
+                url=url,
+                text=text,
+                contacts=contacts,
+                is_demo=task.is_demo,
+            )
+            db.add(item)
+            db.flush()
+    except IntegrityError:
+        doc = db.scalar(select(Document).where(Document.identity == identity))
+        if doc is None:
+            raise
+        item = db.scalar(select(Item).where(Item.document_id == doc.id))
+        emit(db, task, "item.duplicate", item_id=item.id)
+        return {"item_id": item.id, "duplicate": True}
+    emit(db, task, "item.created", item_id=item.id)
+    return {"item_id": item.id, "duplicate": False}
+
+
+def finish(task_id, token, results=None, error=None):
+    with Session.begin() as db:
+        task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
+        if not task or task.status != "running" or task.lease_token != token:
+            return  # Fencing: a timed-out worker cannot overwrite a later attempt.
+        if not error:
+            try:
+                if task.kind == "search":
+                    for i, result in enumerate(results):
+                        enqueue(
+                            db,
+                            kind="ingest",
+                            payload={**result, "provider": task.payload["provider"]},
+                            key=f"child:{task.id}:{i}",
+                            parent=task,
+                        )
+                    task.result = {"discovered": len(results)}
+                else:
+                    task.result = save_item(db, task)
+            except ProviderError as exc:
+                error = exc
+        if error:
+            task.error_code = error.code
+            task.status = (
+                "action_required"
+                if error.action_required
+                else ("retry_wait" if task.attempts < task.attempt_limit else "failed")
+            )
+            task.available_at = time.time() + min(300, 5 * 2 ** min(task.attempts, 6))
+        else:
+            task.status = "succeeded"
+            task.error_code = None
+        task.lease_until = None
+        task.lease_token = None
+        task.updated_at = time.time()
+        attempt = db.scalar(
+            select(Attempt).where(Attempt.task_id == task.id, Attempt.number == task.attempts)
+        )
+        attempt.outcome = task.status
+        attempt.ended_at = time.time()
+        emit(db, task, f"task.{task.status}", error_code=task.error_code)
+
+
+def execute(task_id):
+    claimed = claim(task_id)
+    if not claimed:
+        return
+    token, kind, payload = claimed
+    try:
+        results = search(payload, settings()) if kind == "search" else None
+        finish(task_id, token, results=results)
+    except ProviderError as exc:
+        finish(task_id, token, error=exc)
+    except Exception:
+        # Do not log payloads, raw responses or credentials. The lease recovers DB failures.
+        finish(task_id, token, error=ProviderError("worker_error"))
+
+
+def schedule_due():
+    with Session.begin() as db:
+        rules = db.scalars(
+            select(Rule)
+            .where(Rule.enabled.is_(True), Rule.next_run_at <= time.time())
+            .with_for_update(skip_locked=True)
+            .limit(100)
+        ).all()
+        for rule in rules:
+            # No overlapping search for one rule, including an authorization wait.
+            active = db.scalar(
+                select(Task.id).where(
+                    Task.rule_id == rule.id,
+                    Task.kind == "search",
+                    Task.status.in_(["queued", "running", "retry_wait", "action_required"]),
+                )
+            )
+            if not active:
+                start_rule(db, rule, f"schedule:{rule.id}:{rule.version}:{rule.next_run_at}")
+            rule.next_run_at = time.time() + rule.interval_seconds
+
+
+def recover_expired():
+    with Session.begin() as db:
+        tasks = db.scalars(
+            select(Task)
+            .where(Task.status == "running", Task.lease_until < time.time())
+            .with_for_update(skip_locked=True)
+            .limit(100)
+        ).all()
+        for task in tasks:
+            task.status = "retry_wait" if task.attempts < task.attempt_limit else "failed"
+            task.error_code = "worker_lease_expired"
+            task.lease_token = None
+            task.lease_until = None
+            task.available_at = time.time()
+            task.updated_at = time.time()
+            attempt = db.scalar(
+                select(Attempt).where(Attempt.task_id == task.id, Attempt.number == task.attempts)
+            )
+            attempt.outcome = "lease_expired"
+            attempt.ended_at = time.time()
+            emit(db, task, f"task.{task.status}", error_code=task.error_code)
+
+
+def dispatch_pending(publish):
+    with Session.begin() as db:
+        rows = db.scalars(
+            select(Outbox)
+            .join(Task)
+            .where(
+                Task.status.in_(["queued", "retry_wait"]),
+                Task.available_at <= time.time(),
+                Outbox.next_publish_at <= time.time(),
+            )
+            .with_for_update(skip_locked=True)
+            .limit(100)
+        ).all()
+        for row in rows:
+            publish(row.task_id)  # Crash after publish is safe: duplicate execution is fenced.
+            row.publishes += 1
+            row.next_publish_at = time.time() + 30  # Reconcile lost broker messages until claimed.
