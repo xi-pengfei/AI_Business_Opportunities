@@ -138,6 +138,9 @@ def test_search_to_terminal_feed_is_deduplicated_and_not_pushed(client, database
     )
     snapshot = client.get("/api/v1/display/snapshot").json()
     assert snapshot["pending_count"] == 1 and snapshot["items"][0]["fragments"]
+    assert snapshot["collectors"][0]["last_result_at"] is not None
+    assert snapshot["collectors"][0]["last_opportunity_at"] is not None
+    assert snapshot["collectors"][0]["search_engine"] == "xiaohongshu"
     # A repeat search must not enqueue another detail read, even before animation finishes.
     with database.begin() as db:
         t = service.start_rule(db, db.get(Rule, r["id"]), "search-2")
@@ -234,3 +237,56 @@ def test_one_login_failure_blocks_other_social_reads_without_blocking_public(
         assert db.get(Task, sid).status == "action_required"
         assert db.get(Task, sid).error_code == "xhs_verification_required"
         assert db.get(Task, pid).status == "succeeded"
+
+
+def test_social_supply_and_hashtags_are_not_purchase_demand():
+    cases = [
+        ("找软件开发公司！先要看这个", "找软件公司别先看规模，先看这一样 #软件开发[话题]#"),
+        ("APP定制满意再付款", "想外包做软件的客户看过来，自有全职技术团队，为您提供方案"),
+        ("软件公司怎么选择", "想咨询开发系统，主营业务为小程序开发，欢迎评论私信"),
+        ("找开发想转AI的小伙伴", "我们团队需要你的加入，要求有软件经验，参与系统搭建"),
+        ("AI智能体开发招人", "想找一份工作，公司有带教，岗位需要参加岗前实训"),
+        ("客户上门沟通AI开发需求", "#软件开发公司[话题]# #小程序开发[话题]#"),
+        ("接一些 AI Agent定制开发", "如果你有想用AI实现的业务需求，欢迎私信聊聊"),
+        ("App开发全流程（收藏版）", "想做软件需要系统规划，整理流程图给大家"),
+        ("开发智能体需要注意什么？", "需要增加系统的校验，分享开发经验"),
+        ("软件需求交流", "#软件开发[话题]#"),
+    ]
+    for title, body in cases:
+        assert describe_social_demand(title, body)["information_kind"] == "bulletin"
+    assert (
+        describe_social_demand("求推荐开发团队", "我们工厂需要升级ERP系统，想找软件公司沟通需求")[
+            "information_kind"
+        ]
+        == "demand"
+    )
+
+
+def test_textless_note_does_not_block_next_search(database):
+    with database.begin() as db:
+        rule = Rule(
+            name="social",
+            query="找开发团队",
+            provider="xiaohongshu",
+            source_type="social_demand",
+            enabled=True,
+            next_run_at=0,
+        )
+        db.add(rule)
+        db.flush()
+        task = service.enqueue(
+            db,
+            kind="ingest",
+            key="textless",
+            payload={"provider": "xiaohongshu", "source_type": "social_demand"},
+            rule=rule,
+        )
+        tid, rid = task.id, rule.id
+    token, *_ = service.claim(tid)
+    service.finish(tid, token, error=ProviderError("empty_content"))
+    with database() as db:
+        assert db.get(Task, tid).status == "failed"
+        assert db.get(Rule, rid).next_run_at == 0
+    service.schedule_due()
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(Task).where(Task.kind == "search")) == 1

@@ -234,7 +234,9 @@ def finish(task_id, token, results=None, error=None, prepared=None):
             complete(db,task,results or [],error)
         if error:
             task.error_code = error.code
-            if task.payload.get("provider") == "xiaohongshu":
+            if task.payload.get("provider") == "xiaohongshu" and error.code == "empty_content":
+                task.attempt_limit = task.attempts  # Textless notes cannot improve through retries.
+            if task.payload.get("provider") == "xiaohongshu" and error.code != "empty_content":
                 for rule in db.scalars(select(Rule).where(Rule.provider == "xiaohongshu")):
                     rule.next_run_at = max(rule.next_run_at, time.time() + 600)
             task.status = (

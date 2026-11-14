@@ -100,7 +100,7 @@ def chart_facts(db, demo, start):
 
 
 def collector_status(db, demo, role):
-    from scout.models import Rule, SearchCursor
+    from scout.models import Rule
 
     output = []
     for rule in db.scalars(
@@ -140,10 +140,10 @@ def collector_status(db, demo, role):
                 "next_run_at": rule.next_run_at,
                 "continuous": rule.interval_seconds == 0,
                 "search_page": latest.payload.get("page",1) if latest else 1,
-                "search_engine": latest.payload.get("engine","") if latest else "",
+                "search_engine": latest.result.get("search_engine") or latest.payload.get("engine", "") or ("xiaohongshu" if rule.provider == "xiaohongshu" else "") if latest else "",
                 "search_outcome": latest.error_code or latest.result.get("search_outcome", "") if latest else "",
-                "last_result_at": db.scalar(select(func.max(SearchCursor.last_result_at)).where(SearchCursor.rule_id==rule.id)),
-                "last_opportunity_at": db.scalar(select(func.max(Item.created_at)).where(Item.is_demo==demo,Item.quality_status=="active",Item.information_kind=="opportunity")),
+                "last_result_at": db.scalar(select(func.max(Task.updated_at)).where(Task.rule_id == rule.id, Task.kind == "search", Task.status == "succeeded", Task.result["discovered"].as_integer() > 0)),
+                "last_opportunity_at": db.scalar(select(func.max(Item.created_at)).where(Item.is_demo==demo,Item.quality_status=="active",Item.information_kind.in_(("opportunity", "demand")), Item.id.in_(select(Task.result["item_id"].as_string()).where(Task.rule_id == rule.id)))),
                 "waiting_recheck": state in ("next_batch", "failed") and rule.next_run_at > time.time()+5,
 
                 "done": done,
