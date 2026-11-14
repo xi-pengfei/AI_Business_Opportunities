@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, text
 
+from scout.assignments import assignment_facts, pending_items
 from scout.config import settings
 from scout.db import Session
 from scout.display import chart_facts, collector_status, discovery_facts, unique_items
@@ -266,7 +267,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             ).all()
         )
         recent = db.scalars(
-            unique_items(demo).order_by(Item.created_at.desc(), Item.id).limit(20)
+            pending_items(demo).order_by(Item.created_at.desc(), Item.id).limit(20)
         ).all()
         latest = db.scalars(
             select(Event).where(Event.is_demo == demo).order_by(Event.id.desc()).limit(30)
@@ -299,6 +300,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             **chart_facts(db, demo, start),
             **discovery_facts(db, demo, now),
             "delivery": {"available": False, "sent": None},
+            **assignment_facts(db, demo, now, current == "admin"),
             "regions": [{"name": r, "count": n} for r, n in db.execute(
                 select(Item.region, func.count()).where(Item.id.in_(unique_items(demo).with_only_columns(Item.id)), Item.region.is_not(None)).group_by(Item.region)
             )],

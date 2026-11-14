@@ -3,8 +3,9 @@ import { createRoot } from "react-dom/client";
 import { Charts } from "./Charts";
 import type { ChartSelection } from "./Charts";
 import { RegionMap } from "./RegionMap";
-import { expandCargo, landFragment, fragmentColor, cargoKey } from "./fragments";
+import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
+import {SourceFields, Information} from "./FlowPanels";
 import { Spider } from "./Spider";
 import { clock, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
@@ -39,6 +40,7 @@ function App() {
   const [moving, setMoving] = useState<Cargo | null>(null);
   const cargoQueue = useRef<Cargo[]>([]);
   const currentCargo = useRef<Cargo | null>(null);
+  const assignedIds = useRef(new Set<string>());
   const [library, setLibrary] = useState<Item[]>([]);
   const [landed, setLanded] = useState<Set<string>>(new Set());
   const activeCargo = useRef(false);
@@ -50,19 +52,19 @@ function App() {
     activeCargo.current = !!next;
     currentCargo.current = next;
     setMoving(next);
-    if (next) setTerminalFeed(old => [...old.filter(i => i.id !== next.id).slice(-3), next]);
+    if (next) setTerminalFeed([next]);
   }, []);
   const completeCargo = useCallback(() => {
     const cargo = currentCargo.current;
     if (cargo) {
-      setLibrary(old => landFragment(old, cargo));
+      if (!assignedIds.current.has(cargo.id)) setLibrary(old => landFragment(old, cargo));
       setLanded(old => new Set([...old, cargoKey(cargo)]));
     }
     nextCargo();
   }, [nextCargo]);
   useEffect(() => {
     const box = terminalScroll.current;
-    if (box && !currentCargo.current) box.scrollTop = box.scrollHeight;
+    if (box && !currentCargo.current) box.scrollTop = 0;
   }, [terminalFeed]);
   const seen = useRef(new Set<string>()),
     hydrated = useRef(false);
@@ -103,11 +105,13 @@ function App() {
       );
       if (activeView.current !== viewKey) return;
       setData(snapshot);
+      assignedIds.current = new Set(snapshot.assigned_items.map(i=>i.id));
+      setLibrary(old=>old.filter(i=>!assignedIds.current.has(i.id)));
       setConnected(true);
       setConnectionError("");
       if (!hydrated.current) {
         feedCursor.current = {after: snapshot.server_time, after_id: ""};
-        setTerminalFeed(snapshot.items.slice(0, 3).reverse());
+        setTerminalFeed(snapshot.items.slice(0, 1));
         setLibrary(snapshot.items);
         setLanded(new Set(expandCargo(snapshot.items).map(cargoKey)));
       } else if (feedCursor.current && cargoQueue.current.length < 200) {
@@ -363,7 +367,7 @@ function App() {
       )}
       {display && data && (
         <>
-          <div className="charts"><Charts data={data} onSelect={setChartSelection} /><RegionMap data={data} onSelect={setChartSelection} /></div>
+          <div className="charts"><Charts data={data} onSelect={setChartSelection} onOpenItem={id=>{if(data.items.some(i=>i.url)) request(`/items/${id}`).then(setDetail).catch(e=>setError(e.message));}} /><RegionMap data={data} onSelect={setChartSelection} /></div>
           {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
             selection={chartSelection} request={request} close={() => setChartSelection(null)}
             open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
@@ -413,16 +417,7 @@ function App() {
               <h2>来源终端</h2>
               <div className="terminal-feed" ref={terminalScroll}>
                 {terminalFeed.map(entry => <article className={`source-preview ${moving?.id === entry.id ? "cargo-source" : ""}`} key={entry.id}>
-                  <small>{clock(entry.created_at)} · 已读取</small>
-                  {entry.url && <a href={entry.url} target="_blank" rel="noopener noreferrer">{entry.url}</a>}
-                  <h3>{entry.title}</h3>
-                  <div className="source-pieces">{(entry.fragments || []).map(f => {
-                    const key = `${entry.id}:${f.index}`;
-                    return <p key={f.index} className="source-context">{f.before}<mark
-                      data-source-fragment={key}
-                      className={(moving && cargoKey(moving) === key) || landed.has(key) ? "fragment-picked" : ""}
-                      style={{"--fragment-color": fragmentColor(f.index)} as React.CSSProperties}>{f.text}</mark>{f.after}</p>;
-                  })}</div>
+                  <SourceFields item={entry} moving={moving} landed={landed} />
                 </article>)}
               </div>
               <p>
@@ -461,7 +456,7 @@ function App() {
             </section>
             <section className="panel library">
               <h2>
-                信息库 <small>{data.item_count} 条</small>
+                信息库 · 待推送 <small>{data.pending_count} 条</small>
               </h2>
               <Information
                 items={library}
@@ -484,7 +479,13 @@ function App() {
               }
             />
           </div>
-
+          <section className="panel assigned-library">
+            <h2>已推送 / 认领 <small>{data.pushed_count} 条 · 已认领 {data.assigned_count} 条</small></h2>
+            <div className="table-scroll"><table><thead><tr><th>标题</th><th>认领人</th><th>推送时间</th><th>状态</th><th>认领时间</th></tr></thead>
+              <tbody>{data.assigned_items.map(i=><tr key={i.id}><td><button className="text-button" onClick={()=>request(`/items/${i.id}`).then(setDetail)}>{i.title}</button></td><td>{i.claimed_by || "—"}</td><td>{clock(i.sent_at)}</td><td>{i.delivery_status==='claimed'?'已认领':'待认领'}</td><td>{i.claimed_at?clock(i.claimed_at):'—'}</td></tr>)}</tbody>
+            </table></div>
+            {!data.assigned_items.length && <p className="empty">{data.assignment_status==='not_configured'?'等待接入钉钉群 · 引用消息并 @机器人认领后发送下一条':'暂无已分配信息'}</p>}
+          </section>
         </>
       )}
       {!data && <div className="empty">正在读取运行状态…</div>}
@@ -745,19 +746,6 @@ function ChartRecords({ selection, request, close, open }: {
           <span>第 {offset / 50 + 1} 页</span><button disabled={offset + 50 >= result.total} onClick={() => setOffset(offset + 50)}>下一页</button></div>
       </>}
   </section>;
-}
-function Information({ items, open }: { items: Item[]; open: (item: Item) => void }) {
-  return <><div className="table-scroll"><table className="fragment-table">
-    <thead><tr><th>标题</th><th data-inbox-target>信息片</th><th>原始网址</th><th>新闻时间</th><th>采集时间</th></tr></thead>
-    <tbody>{items.map(item => <tr key={item.id} data-library-item={item.id}>
-      <td>{item.url ? <button className="text-button" onClick={()=>open(item)}>{item.title}</button> : item.title}</td>
-      <td><div className="fragment-tags">{(item.fragments || []).map(f => <span
-        className="fragment-tag" key={f.index} data-landed-fragment={`${item.id}:${f.index}`}
-        style={{"--fragment-color":fragmentColor(f.index)} as React.CSSProperties}>{f.text}</span>)}</div></td>
-      <td>{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" title={item.url}>{new URL(item.url).hostname}</a> : "—"}</td>
-      <td>{item.published_at || "—"}</td><td>{clock(item.created_at)}</td>
-    </tr>)}</tbody>
-  </table></div>{!items.length && <p className="empty">等待采集到的信息片</p>}</>;
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

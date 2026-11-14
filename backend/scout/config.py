@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     searxng_engines: str = "bing,duckduckgo"
     searxng_url: str = "http://searxng:8080"
+    dingtalk_enabled: bool = False
+    dingtalk_app_key: str = ""
+    dingtalk_app_secret: str = ""
+    dingtalk_robot_code: str = ""
+    dingtalk_conversation_id: str = ""
+    dingtalk_group_name: str = "钉钉群"
     allow_demo: bool = False
     lease_seconds: int = Field(default=180, ge=150)
     max_attempts: int = Field(default=3, ge=1, le=10)

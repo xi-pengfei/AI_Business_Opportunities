@@ -4,6 +4,7 @@ export type Item = {
   title: string;
   fragments?: Fragment[];
   category?: string;
+  received_fields?: string[];
   url?: string;
   text?: string;
   contacts?: { type: string; value: string }[];
@@ -21,6 +22,13 @@ export type Execution = {
   is_demo: boolean;
 };
 export type Snapshot = {
+  pending_count: number;
+  backlog_count: number;
+  pushed_count: number;
+  assigned_count: number;
+  assignment_status: string;
+  assigned_items: (Item & {recipient: string; delivery_status: string; sent_at: number; read_at?: number; claimed_by?:string; claimed_at?:number})[];
+  backlog_points: {id:string; created_at:number; waiting_hours:number; fragments:number; category:string}[];
   delivery: { available: boolean; sent: number | null };
   regions: { name: string; count: number }[];
   region_unknown: number;

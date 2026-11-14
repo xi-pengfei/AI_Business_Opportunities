@@ -109,3 +109,29 @@ class Event(Base):
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[float] = mapped_column(Float, default=time.time, index=True)
+
+
+class Delivery(Base):
+    __tablename__ = "information_deliveries"
+    item_id: Mapped[str] = mapped_column(ForeignKey("information_items.id"), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(String(300))
+    robot_code: Mapped[str] = mapped_column(String(120))
+    recipient: Mapped[str] = mapped_column(String(120), default="钉钉群")
+    status: Mapped[str] = mapped_column(String(30), default="sending")
+    message_id: Mapped[str | None] = mapped_column(String(500), unique=True)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    sent_at: Mapped[float | None] = mapped_column(Float)
+    read_at: Mapped[float | None] = mapped_column(Float)
+    claim_code: Mapped[str | None] = mapped_column(String(20), unique=True, default=lambda: uuid.uuid4().hex[:12])
+    claimed_by_id: Mapped[str | None] = mapped_column(String(200))
+    claimed_by_name: Mapped[str | None] = mapped_column(String(120))
+    claimed_at: Mapped[float | None] = mapped_column(Float)
+    claim_message_id: Mapped[str | None] = mapped_column(String(500), unique=True)
+    next_check_at: Mapped[float] = mapped_column(Float, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(60))
+
+
+class DeliveryGate(Base):
+    __tablename__ = "delivery_gates"
+    id: Mapped[str] = mapped_column(String(30), primary_key=True)
+    current_item_id: Mapped[str | None] = mapped_column(ForeignKey("information_items.id"))

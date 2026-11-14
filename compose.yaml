@@ -56,6 +56,12 @@ services:
   dispatcher:
     <<: *backend
     command: ["python", "-m", "scout.dispatcher"]
+  notifier:
+    <<: *backend
+    command: ["python", "-m", "scout.dingtalk"]
+  claim-listener:
+    <<: *backend
+    command: ["python", "-m", "scout.claim_listener"]
   web:
     build: ./frontend
     ports: ["127.0.0.1:5180:80"]
