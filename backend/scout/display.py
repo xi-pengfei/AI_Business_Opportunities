@@ -1,5 +1,7 @@
 """Chart facts from durable records, independent of visual animation."""
 
+import time
+
 from sqlalchemy import func, select
 
 from scout.models import Document, Event, Item, Task
@@ -94,7 +96,7 @@ def chart_facts(db, demo, start):
 
 
 def collector_status(db, demo, role):
-    from scout.models import Rule
+    from scout.models import Rule, SearchCursor
 
     output = []
     for rule in db.scalars(
@@ -133,6 +135,13 @@ def collector_status(db, demo, role):
                 "error_code": latest.error_code if latest else None,
                 "next_run_at": rule.next_run_at,
                 "continuous": rule.interval_seconds == 0,
+                "search_page": latest.payload.get("page",1) if latest else 1,
+                "search_engine": latest.payload.get("engine","") if latest else "",
+                "search_outcome": latest.error_code or latest.result.get("search_outcome", "") if latest else "",
+                "last_result_at": db.scalar(select(func.max(SearchCursor.last_result_at)).where(SearchCursor.rule_id==rule.id)),
+                "last_opportunity_at": db.scalar(select(func.max(Item.created_at)).where(Item.is_demo==demo,Item.quality_status=="active",Item.information_kind=="opportunity")),
+                "waiting_recheck": state in ("next_batch", "failed") and rule.next_run_at > time.time()+5,
+
                 "done": done,
                 "total": total,
                 "duplicates": sum(

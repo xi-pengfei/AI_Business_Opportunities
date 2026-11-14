@@ -40,6 +40,12 @@ export type Snapshot = {
     state: string;
     next_run_at: number;
     continuous: boolean;
+    search_page: number;
+    search_engine: string;
+    search_outcome: string;
+    last_result_at: number | null;
+    last_opportunity_at: number | null;
+    waiting_recheck: boolean;
     done: number;
     total: number;
     duplicates: number;
@@ -89,6 +95,8 @@ export const status: Record<string, string> = {
 };
 export const errors: Record<string, string> = {
   searxng_not_configured: "自建搜索服务尚未配置",
+  searxng_rate_limited: "搜索入口要求验证或限流，冷却后重试，其他可用入口继续",
+  searxng_engines_disabled: "搜索入口未启用，已停止向该入口请求",
   searxng_engines_unavailable: "上游搜索引擎暂时不可用，正在等待重试",
   searxng_request_failed: "自建搜索连接失败，正在重试",
   search_key_missing: "未配置 Tavily 密钥，请在服务端配置后重试",

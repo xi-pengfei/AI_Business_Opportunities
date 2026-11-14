@@ -374,7 +374,7 @@ function App() {
               data.collectors.map((c) => (
                 <section key={c.id}>
                   <strong>
-                    {(
+                    {c.waiting_recheck ? "等待首页复查／入口恢复" : (
                       {
                         queued: "准备搜索",
                         running: "正在搜索",
@@ -387,6 +387,14 @@ function App() {
                     )[c.state] || c.state}
                   </strong>
                   <span>{c.query || c.name}</span>
+                  <small>{c.search_engine || '搜索服务'} · 第 {c.search_page || 1} 页
+                    {c.search_outcome === 'empty' ? ' · 本次返回 0 条' : ''}
+                    {c.search_outcome === 'partial_results' ? ' · 部分入口异常，已有结果继续处理' : ''}
+                    {c.waiting_recheck ? ' · 等待重新检查搜索结果第一页' : ''}
+                  </small>
+                  <small>最后搜到结果：{c.last_result_at ? new Date(c.last_result_at*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '尚未搜到'}
+                    {' · '}最后新增商机：{c.last_opportunity_at ? new Date(c.last_opportunity_at*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '尚无新增'}
+                  </small>
                   <small>
                     第 {c.rounds} 批
                     {c.total > 0

@@ -13,6 +13,12 @@ class ProviderError(Exception):
         self.action_required = action_required
 
 
+class SearchResults(list):
+    def __init__(self, rows, diagnostics):
+        super().__init__(rows)
+        self.diagnostics = diagnostics
+
+
 def canonical_url(value):
     try:
         parsed = urlsplit(value)
@@ -112,10 +118,18 @@ def search_searxng(payload, config):
     if not config.searxng_url:
         raise ProviderError("searxng_not_configured", True)
     engines = {e.strip() for e in getattr(config, "searxng_engines", "bing,duckduckgo").split(",") if e.strip()}
+    if payload.get("engine"):
+        engines &= {payload["engine"]}
     if not engines:
         raise ProviderError("searxng_not_configured", True)
     try:
         with httpx.Client(timeout=httpx.Timeout(25, connect=5), trust_env=False) as client:
+            registry = client.get(config.searxng_url.rstrip("/") + "/config")
+            registry.raise_for_status()
+            enabled = {e["name"] for e in registry.json()["engines"] if e.get("enabled")}
+            engines &= enabled
+            if not engines:
+                raise ProviderError("searxng_engines_disabled")
             response = client.get(
                 config.searxng_url.rstrip("/") + "/search",
                 params={
@@ -128,15 +142,18 @@ def search_searxng(payload, config):
                     "time_range": "month",
                 },
             )
+        if response.status_code in (403, 429):
+            raise ProviderError("searxng_rate_limited")
         response.raise_for_status()
         data = response.json()
         results = data.get("results")
         if not isinstance(results, list):
             raise ValueError()
-        failed = {row[0] for row in data.get("unresponsive_engines", []) if isinstance(row, list) and row}
-        if not results and engines.issubset(failed):
-            raise ProviderError("searxng_engines_unavailable")
-        return [
+        failures = [row for row in data.get("unresponsive_engines", []) if isinstance(row,list) and row and row[0] in engines]
+        if not results and failures:
+            limited = any(any(token in str(row).lower() for token in ("captcha", "429", "too many", "suspended", "blocked")) for row in failures)
+            raise ProviderError("searxng_rate_limited" if limited else "searxng_engines_unavailable")
+        return SearchResults([
             {
                 "title": str(r.get("title") or "未命名来源")[:1000],
                 "url": str(r.get("url") or ""),
@@ -146,7 +163,8 @@ def search_searxng(payload, config):
             }
             for r in results
             if isinstance(r, dict) and r.get("url")
-        ]
+        ], {"search_outcome": "partial_results" if failures else "results" if results else "empty",
+            "engines": sorted(engines), "failed_engines": [row[0] for row in failures]})
     except ProviderError:
         raise
     except (httpx.HTTPError, ValueError, KeyError, TypeError):

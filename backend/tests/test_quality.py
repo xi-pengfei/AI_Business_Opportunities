@@ -61,3 +61,14 @@ def test_navigation_is_never_carried_as_a_fragment_and_old_news_is_archived():
 
     assert source_fragments("招标网 > 招标搜索 > 信息化 > 招标公告 > 带附件搜索 加载中 招标项目") == []
     assert describe("企业数字化政策发布", "发布日期：2022-09-02。支持开展企业数字化建设。", now=NOW)["quality_reason"] == "outside_30_days"
+
+
+def test_invoice_boilerplate_does_not_make_material_procurement_a_software_lead():
+    from scout.quality import information_kind
+    assert information_kind("某集团防冻液采购公告", "付款方式：以ERP发票审核日期为准，次月付款。") == "bulletin"
+    assert information_kind("某集团ERP发票管理系统采购公告", "计划采购软件系统。") == "opportunity"
+
+
+def test_supplier_ranking_article_is_not_customer_demand():
+    from scout.quality import information_kind
+    assert information_kind("MES系统排名怎么看从工厂需求建立候选清单", "某公司围绕离散制造建设，将MES系统放在统一平台上。") == "bulletin"

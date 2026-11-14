@@ -37,7 +37,7 @@ def enqueue(db, *, kind, payload, key, rule=None, parent=None):
     return task
 
 
-def start_rule(db, rule, key):
+def start_rule(db, rule, key, scheduled=False):
     queries = [line.strip() for line in rule.query.splitlines() if line.strip()]
     rounds = (
         db.scalar(
@@ -47,55 +47,31 @@ def start_rule(db, rule, key):
         )
         or 0
     )
-    # Explore distinct geographic scopes before revisiting the original query.
-    scopes = [
-        "",
-        "上海",
-        "江苏",
-        "浙江",
-        "广东",
-        "山东",
-        "北京",
-        "四川",
-        "湖北",
-        "陕西",
-        "福建",
-        "安徽",
-        "河南",
-        "湖南",
-        "河北",
-        "重庆",
-        "天津",
-        "江西",
-        "山西",
-        "辽宁",
-        "云南",
-        "广西",
-        "贵州",
-        "内蒙古",
-        "黑龙江",
-        "吉林",
-        "甘肃",
-        "宁夏",
-        "新疆",
-        "海南",
-        "青海",
-        "西藏",
-    ]
-    scope = scopes[(rounds // len(queries)) % len(scopes)] if rule.interval_seconds == 0 else ""
-    query = " ".join(part for part in (queries[rounds % len(queries)], scope) if part)
-    return enqueue(
+    lane = None
+    if rule.provider == "searxng" and rule.interval_seconds == 0:
+        from scout.search_plan import choose
+        engines = [e.strip() for e in settings().searxng_engines.split(",") if e.strip()]
+        lane = choose(db,rule,engines,force=not scheduled)
+        if lane is None:
+            return None
+    query = lane.query if lane else queries[rounds % len(queries)]
+    task = enqueue(
         db,
         kind="search",
         payload={
             "query": query,
             "provider": rule.provider,
             "max_results": rule.max_results,
-            "page": rounds // (len(queries) * len(scopes)) + 1 if rule.provider == "searxng" else 1,
+            "page": lane.page if lane else 1,
+            **({"engine":lane.engine,"search_cursor_id":lane.id} if lane else {}),
         },
         key=key,
         rule=rule,
     )
+
+    if lane:
+        task.attempt_limit = 1  # Cursor cooldown retries this source without blocking others.
+    return task
 
 
 def claim(task_id):
@@ -228,11 +204,14 @@ def finish(task_id, token, results=None, error=None):
                             key=f"child:{task.id}:{i}",
                             parent=task,
                         )
-                    task.result = {"discovered": len(results)}
+                    task.result = {"discovered": len(results), **getattr(results,"diagnostics",{})}
                 else:
                     task.result = save_item(db, task)
             except ProviderError as exc:
                 error = exc
+        if task.kind == "search":
+            from scout.search_plan import complete
+            complete(db,task,results or [],error)
         if error:
             task.error_code = error.code
             task.status = (
@@ -296,7 +275,8 @@ def schedule_due():
             if active:
                 continue
             if not active:
-                start_rule(db, rule, f"schedule:{rule.id}:{rule.version}:{rule.next_run_at}")
+                if start_rule(db, rule, f"schedule:{rule.id}:{rule.version}:{rule.next_run_at}", scheduled=True) is None:
+                    continue
             rule.next_run_at = time.time() + max(3, rule.interval_seconds)
 
 

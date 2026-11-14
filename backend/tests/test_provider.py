@@ -6,6 +6,14 @@ import pytest
 from scout import providers
 
 
+def provider_transport(handle):
+    def route(request):
+        if request.url.path == "/config":
+            return httpx.Response(200,json={"engines":[{"name":name,"enabled":True} for name in ("bing","duckduckgo")]})
+        return handle(request)
+    return httpx.MockTransport(route)
+
+
 def test_search_preserves_body_and_labels_excerpt(monkeypatch):
     original = httpx.Client
 
@@ -35,7 +43,7 @@ def test_search_preserves_body_and_labels_excerpt(monkeypatch):
     monkeypatch.setattr(
         providers.httpx,
         "Client",
-        lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs),
+        lambda **kwargs: original(transport=provider_transport(handle), **kwargs),
     )
     results = providers.search(
         {"provider": "tavily", "query": "ERP", "max_results": 2},
@@ -66,7 +74,7 @@ def test_searxng_returns_all_results_as_excerpts_without_paid_fallback(monkeypat
     monkeypatch.setattr(
         providers.httpx,
         "Client",
-        lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs),
+        lambda **kwargs: original(transport=provider_transport(handle), **kwargs),
     )
     result = providers.search(
         {"provider": "searxng", "query": "ERP", "page": 2, "max_results": 20},
@@ -89,7 +97,7 @@ def test_searxng_engine_failure_is_retryable_and_never_calls_paid_provider(monke
     monkeypatch.setattr(
         providers.httpx,
         "Client",
-        lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs),
+        lambda **kwargs: original(transport=provider_transport(handle), **kwargs),
     )
     with pytest.raises(providers.ProviderError) as error:
         providers.search(
@@ -101,11 +109,33 @@ def test_searxng_engine_failure_is_retryable_and_never_calls_paid_provider(monke
     assert calls == ["searxng"]
 
 
-def test_one_engine_failure_does_not_turn_valid_empty_search_into_retry(monkeypatch):
+def test_partial_failure_with_no_results_is_not_claimed_as_true_empty(monkeypatch):
     original = httpx.Client
     monkeypatch.setattr(providers.httpx, "Client", lambda **kwargs: original(
-        transport=httpx.MockTransport(lambda request: httpx.Response(
+        transport=provider_transport(lambda request: httpx.Response(
             200, json={"results": [], "unresponsive_engines": [["duckduckgo", "timeout"]]}
         )), **kwargs))
-    assert providers.search({"provider": "searxng", "query": "rare phrase"},
-                            SimpleNamespace(searxng_url="http://searxng:8080")) == []
+    with pytest.raises(providers.ProviderError, match="searxng_engines_unavailable"):
+        providers.search({"provider": "searxng", "query": "rare phrase"},
+                         SimpleNamespace(searxng_url="http://searxng:8080"))
+
+
+@pytest.mark.parametrize('status, failures',[(429,[]),(200, [['duckduckgo','CAPTCHA']])])
+def test_rate_limit_is_not_a_normal_empty_result(monkeypatch,status,failures):
+    original=httpx.Client
+    monkeypatch.setattr(providers.httpx,'Client',lambda **kwargs: original(
+        transport=provider_transport(lambda request: httpx.Response(status,json={'results':[],'unresponsive_engines':failures})),**kwargs))
+    with pytest.raises(providers.ProviderError,match='searxng_rate_limited'):
+        providers.search({'provider':'searxng','query':'ERP','engine':'duckduckgo'},SimpleNamespace(searxng_url='http://searxng:8080'))
+
+
+def test_disabled_engine_is_never_counted_as_successful_search(monkeypatch):
+    original=httpx.Client
+    calls=[]
+    def response(request):
+        calls.append(request.url.path)
+        return httpx.Response(200,json={'engines':[{'name':'bing','enabled':False}]})
+    monkeypatch.setattr(providers.httpx,'Client',lambda **kwargs: original(transport=httpx.MockTransport(response),**kwargs))
+    with pytest.raises(providers.ProviderError,match='searxng_engines_disabled'):
+        providers.search({'provider':'searxng','query':'ERP','engine':'bing'},SimpleNamespace(searxng_url='http://searxng:8080'))
+    assert calls==['/config']

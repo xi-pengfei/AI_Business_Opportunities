@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     admin_token: str = ""
     display_token: str = ""
     tavily_api_key: str = ""
-    searxng_engines: str = "bing,duckduckgo"
+    searxng_engines: str = "duckduckgo,brave"
     searxng_url: str = "http://searxng:8080"
     dingtalk_enabled: bool = False
     dingtalk_app_key: str = ""

@@ -142,3 +142,20 @@ class RemovedEvidence(Base):
     __tablename__ = "removed_evidence"
     url_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     content_hash: Mapped[str] = mapped_column(String(64), index=True)
+
+
+class SearchCursor(Base):
+    __tablename__ = "search_cursors"
+    __table_args__ = (UniqueConstraint("rule_id", "config_version", "query", "engine"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    rule_id: Mapped[str] = mapped_column(ForeignKey("monitor_rules.id"), index=True)
+    config_version: Mapped[int] = mapped_column(Integer)
+    query: Mapped[str] = mapped_column(String(500))
+    engine: Mapped[str] = mapped_column(String(40))
+    page: Mapped[int] = mapped_column(Integer, default=1)
+    empty_streak: Mapped[int] = mapped_column(Integer, default=0)
+    signature: Mapped[str | None] = mapped_column(String(64))
+    next_at: Mapped[float] = mapped_column(Float, default=0, index=True)
+    last_front_at: Mapped[float] = mapped_column(Float, default=0)
+    last_result_at: Mapped[float | None] = mapped_column(Float)
+    outcome: Mapped[str] = mapped_column(String(40), default="new")

@@ -151,13 +151,16 @@ def freshness_reason(published, now):
 def information_kind(title, text):
     """Conservative routing, not a claim that a lead has been verified."""
     evidence = title + " " + text
-    if re.search(r"政策|指导意见|实施意见|管理办法|工作报告|解读|名单公示|新闻|报道|中标|成交|终止|废标|关于印发|行动方案|实施方案|采购异常", title):
+    if re.search(r"排名|排行榜|选型指南|怎么看|产品介绍|十大品牌|政策|指导意见|实施意见|管理办法|工作报告|解读|名单公示|新闻|报道|中标|成交|终止|废标|关于印发|行动方案|实施方案|采购异常", title):
         return "bulletin"
     if re.search(r"采购异常|招标异常|终止公告|废标公告|成交公告|中标结果", evidence):
         return "bulletin"
     buyer = re.search(r"公司|集团|工厂|医院|大学|学院|学校|委员会|管理局|人民政府|采购人|采购单位|招标人", evidence)
     demand = re.search(r"采购公告|招标公告|招标项目|竞争性磋商|询价公告|采购需求|拟采购|计划采购|寻求.{0,16}(?:供应商|开发)|需要.{0,16}(?:系统|软件)|建设.{0,16}(?:系统|平台)", evidence)
-    relevant = re.search(r"系统|软件|信息化|数字化|数智|人工智能|智能体|ERP|MES|WMS|AI", evidence, re.I)
+    # ERP mentioned only in invoice/payment instructions is not an ERP project.
+    substantive = " ".join(part for part in re.split(r"[。；;\n]",text)
+                           if not re.search(r"付款方式|ERP发票|发票审核|承兑不贴息",part,re.I))
+    relevant = re.search(r"系统|软件|信息化|数字化|数智|人工智能|智能体|ERP|MES|WMS|AI", title+" "+substantive, re.I)
     if buyer and demand and relevant and not re.search(r"招聘|岗位职责|供应商介绍|产品介绍|解决方案推荐", title):
         return "opportunity"
     return "bulletin"
