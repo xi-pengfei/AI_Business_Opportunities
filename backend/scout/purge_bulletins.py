@@ -19,7 +19,7 @@ def purge(sessions=Session):
     with sessions.begin() as db:
         delivered = set(db.scalars(select(Delivery.item_id)))
         removed_ids = set()
-        for item in db.scalars(select(Item).where(Item.is_demo.is_(False))).all():
+        for item in db.scalars(select(Item).where(Item.is_demo.is_(False), Item.source_type == "public_tender")).all():
             if item.information_kind != "bulletin" or item.id in delivered:
                 continue
             doc = db.get(Document, item.document_id)

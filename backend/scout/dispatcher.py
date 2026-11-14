@@ -27,6 +27,9 @@ def main():
                 ),
                 publish_customer=lambda task_id: run_task.apply_async(
                     args=[task_id], retry=False, queue="customers"
+                ),
+                publish_social=lambda task_id: run_task.apply_async(
+                    args=[task_id], retry=False, queue="social"
                 )
             )
         except Exception as exc:

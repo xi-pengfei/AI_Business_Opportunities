@@ -12,7 +12,7 @@ def pending_items(demo=False, now=None):
     from scout.retention import current_window
 
     return unique_items(demo).where(
-        *((Item.information_kind == "opportunity", *current_window(now)) if not demo else ()),
+        *((Item.information_kind.in_(("opportunity", "demand")), *current_window(now)) if not demo else ()),
         ~Item.id.in_(select(Delivery.item_id).where(Delivery.status.in_(ASSIGNED)))
     )
 
@@ -31,7 +31,7 @@ def assignment_facts(db, demo, now, admin):
     )
     backlog = db.scalars(
         unique_items(demo).where(
-            *((Item.information_kind == "opportunity", *current_window(now)) if not demo else ()),
+            *((Item.information_kind.in_(("opportunity", "demand")), *current_window(now)) if not demo else ()),
             ~Item.id.in_(select(Delivery.item_id).where(Delivery.status == "claimed"))
         )
     ).all()

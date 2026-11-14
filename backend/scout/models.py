@@ -103,6 +103,7 @@ class Item(Base):
     text: Mapped[str] = mapped_column(Text)
     fragments: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     category: Mapped[str] = mapped_column(String(30), default="其他信息", server_default="其他信息")
+    source_type: Mapped[str] = mapped_column(String(30), default="public_tender", server_default="public_tender")
     information_kind: Mapped[str] = mapped_column(String(20), default="bulletin", server_default="bulletin")
     contacts: Mapped[list] = mapped_column(JSON, default=list)
     quality_status: Mapped[str] = mapped_column(String(20), default="active", server_default="active")

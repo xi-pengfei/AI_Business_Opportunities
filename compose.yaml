@@ -18,6 +18,16 @@ services:
       - ./infrastructure/searxng/settings.yml:/etc/searxng/settings.yml:ro
     ports: ["127.0.0.1:58080:8080"]
     restart: unless-stopped
+  xiaohongshu:
+    platform: linux/amd64
+    image: xpzouying/xiaohongshu-mcp@sha256:90105616646a59babd3351503084ce8347eb2c2a7df166b0165efdc0306ed1f0
+    profiles: ["xiaohongshu"]
+    environment:
+      COOKIES_PATH: /app/data/cookies.json
+      AUTH_TOKEN: ${XIAOHONGSHU_TOKEN:-}
+    volumes: ["xhs_session:/app/data"]
+    shm_size: 512mb
+    restart: unless-stopped
   db:
     image: postgres:17-bookworm
     environment:
@@ -56,6 +66,9 @@ services:
   customer-worker:
     <<: *backend
     command: ["celery", "-A", "scout.worker:app", "worker", "-Q", "customers", "--concurrency=1", "--loglevel=WARNING"]
+  social-worker:
+    <<: *backend
+    command: ["celery", "-A", "scout.worker:app", "worker", "-Q", "social", "--concurrency=1", "--loglevel=WARNING"]
   dispatcher:
     <<: *backend
     command: ["python", "-m", "scout.dispatcher"]
@@ -73,3 +86,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  xhs_session:

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     searxng_engines: str = "duckduckgo,brave"
     searxng_url: str = "http://searxng:8080"
+    xiaohongshu_url: str = "http://xiaohongshu:18060"
+    xiaohongshu_token: str = ""
     dingtalk_enabled: bool = False
     dingtalk_app_key: str = ""
     dingtalk_app_secret: str = ""

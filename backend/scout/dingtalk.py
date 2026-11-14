@@ -114,7 +114,7 @@ def tick(config, transport, sessions=Session, now=None):
             gate.current_item_id = None
         item = db.scalar(
             pending_items(False, now)
-            .where(~Item.id.in_(select(Delivery.item_id)))
+            .where(Item.information_kind == "opportunity", ~Item.id.in_(select(Delivery.item_id)))
             .order_by(Item.created_at, Item.id)
             .limit(1)
         )

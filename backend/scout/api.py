@@ -58,7 +58,7 @@ def task_record(row):
 class RuleInput(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     query: str = Field(min_length=1, max_length=500)
-    provider: Literal["searxng", "tavily", "demo"] = "searxng"
+    provider: Literal["searxng", "tavily", "demo", "xiaohongshu"] = "searxng"
     interval_seconds: int = Field(default=0, ge=0, le=2592000)
     max_results: int = Field(default=20, ge=1, le=20)
     enabled: bool = False
@@ -113,7 +113,7 @@ def providers():
 def rules():
     with Session() as db:
         return [
-            record(r) for r in db.scalars(select(Rule).where(Rule.source_type == "public_tender").order_by(Rule.created_at.desc()).limit(100))
+            record(r) for r in db.scalars(select(Rule).where(Rule.source_type.in_(("public_tender", "social_demand"))).order_by(Rule.created_at.desc()).limit(100))
         ]
 
 
@@ -122,7 +122,7 @@ def create_rule(body: RuleInput):
     if body.provider == "demo" and not settings().allow_demo:
         raise HTTPException(422, "演示适配器未启用")
     with Session.begin() as db:
-        rule = Rule(**body.model_dump())
+        rule = Rule(**body.model_dump(), source_type="social_demand" if body.provider == "xiaohongshu" else "public_tender")
         db.add(rule)
         db.flush()
         return record(rule)
@@ -461,3 +461,44 @@ def customer_signal_detail(signal_id: str):
         if not signal:
             raise HTTPException(404, "客户动态不存在")
         return {**record(signal), "evidence": record(db.get(Document, signal.document_id))}
+
+
+@app.post("/api/v1/xiaohongshu/login/status", dependencies=[Depends(admin)])
+def xhs_login_status():
+    from scout.providers import ProviderError
+    from scout.xiaohongshu import login_status
+    try:
+        result = login_status(settings())
+    except ProviderError as exc:
+        raise HTTPException(503, exc.code) from None
+    if result["is_logged_in"]:
+        with Session.begin() as db:
+            for rule in db.scalars(select(Rule).where(Rule.provider == "xiaohongshu", Rule.enabled.is_(True))):
+                rule.next_run_at = time.time()
+            for task in db.scalars(select(Task).where(Task.payload["provider"].as_string() == "xiaohongshu",
+                    Task.status == "action_required", Task.error_code.in_(("xhs_login_required", "xhs_verification_required"))).with_for_update()):
+                task.status, task.error_code = "queued", None
+                task.available_at = time.time()
+                task.attempt_limit = task.attempts + settings().max_attempts
+                db.get(Outbox, task.id).next_publish_at = time.time()
+                emit(db, task, "task.queued", session_restored=True)
+    return result
+
+
+@app.post("/api/v1/xiaohongshu/login/qrcode", dependencies=[Depends(admin)])
+def xhs_login_qrcode():
+    from scout.providers import ProviderError
+    from scout.xiaohongshu import login_qrcode
+    try:
+        return login_qrcode(settings())
+    except ProviderError as exc:
+        raise HTTPException(503, exc.code) from None
+
+
+@app.get("/api/v1/xiaohongshu", dependencies=[Depends(admin)])
+def xhs_overview():
+    with Session() as db:
+        rows = db.scalars(select(Rule).where(Rule.provider == "xiaohongshu").order_by(Rule.created_at)).all()
+        ids = {r.id for r in rows}
+        return {"rules": [record(r) for r in rows],
+                "collectors": [c for c in collector_status(db, False, "admin") if c["id"] in ids]}

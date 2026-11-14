@@ -71,7 +71,7 @@ def start_rule(db, rule, key, scheduled=False):
         rule=rule,
     )
 
-    if lane:
+    if lane or rule.provider == "xiaohongshu":
         task.attempt_limit = 1  # Cursor cooldown retries this source without blocking others.
     return task
 
@@ -109,22 +109,23 @@ def save_item(db, task):
     fingerprint = hashlib.sha256(text.encode()).hexdigest()
     removed = db.scalar(select(RemovedEvidence).where(
         (RemovedEvidence.url_hash == hashlib.sha256(url.encode()).hexdigest()) |
-        (RemovedEvidence.content_hash == fingerprint)).limit(1)) if not task.is_demo else None
+        (RemovedEvidence.content_hash == fingerprint)).limit(1)) if not task.is_demo and p.get("source_type", "public_tender") == "public_tender" else None
     if removed:
         from scout.purge_bulletins import discarded_payload
 
         task.payload = discarded_payload(p.get("provider"), "removed_information")
         emit(db, task, "item.discarded", reason="removed_information")
         return {"discarded": True, "reason": "removed_information"}
-    from scout.policies import describe_public_tender
+    from scout.policies import describe_public_tender, describe_social_demand
 
-    if not task.is_demo and p.get("source_type", "public_tender") != "public_tender":
+    if not task.is_demo and p.get("source_type", "public_tender") not in ("public_tender", "social_demand"):
         raise ProviderError("source_policy_not_connected", True)
-    quality = (describe if task.is_demo else describe_public_tender)(p["title"], raw, p.get("published_at"))
+    policy = describe_social_demand if p.get("source_type") == "social_demand" else describe_public_tender
+    quality = (describe if task.is_demo else policy)(p["title"], raw, p.get("published_at"))
     if not task.is_demo and quality["information_kind"] == "bulletin":
         from scout.purge_bulletins import discarded_payload
 
-        task.payload = discarded_payload(p.get("provider"))
+        task.payload = {**discarded_payload(p.get("provider")), "source_type": p.get("source_type", "public_tender"), **({"note_id": p["note_id"]} if p.get("note_id") else {})}
         emit(db, task, "item.discarded", reason="not_opportunity")
         return {"discarded": True, "reason": "not_opportunity"}
     if task.is_demo and quality["quality_reason"] == "unverified_date":
@@ -176,6 +177,7 @@ def save_item(db, task):
                 fragments=quality["fragments"],
                 category=quality["category"],
                 information_kind=quality["information_kind"],
+                source_type=p.get("source_type", "public_tender"),
                 quality_status=quality["quality_status"],
                 quality_reason=quality["quality_reason"],
                 region=quality["region"],
@@ -197,7 +199,7 @@ def save_item(db, task):
     return {"item_id": item.id, "duplicate": False}
 
 
-def finish(task_id, token, results=None, error=None):
+def finish(task_id, token, results=None, error=None, prepared=None):
     with Session.begin() as db:
         task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
         if not task or task.status != "running" or task.lease_token != token:
@@ -206,6 +208,12 @@ def finish(task_id, token, results=None, error=None):
             try:
                 if task.kind == "search":
                     for i, result in enumerate(results):
+                        if task.payload.get("provider") == "xiaohongshu":
+                            already = db.scalar(select(Task.id).where(Task.kind == "ingest",
+                                Task.payload["note_id"].as_string() == result["note_id"],
+                                Task.status.in_(("queued", "running", "retry_wait", "succeeded", "action_required"))).limit(1))
+                            if already:
+                                continue
                         enqueue(
                             db,
                             kind="ingest",
@@ -215,6 +223,9 @@ def finish(task_id, token, results=None, error=None):
                         )
                     task.result = {"discovered": len(results), **getattr(results,"diagnostics",{})}
                 else:
+                    if prepared is not None:
+                        task.payload = {**task.payload, **prepared}
+                        task.payload = {k: v for k, v in task.payload.items() if k != "note_token"}
                     task.result = save_item(db, task)
             except ProviderError as exc:
                 error = exc
@@ -223,12 +234,15 @@ def finish(task_id, token, results=None, error=None):
             complete(db,task,results or [],error)
         if error:
             task.error_code = error.code
+            if task.payload.get("provider") == "xiaohongshu":
+                for rule in db.scalars(select(Rule).where(Rule.provider == "xiaohongshu")):
+                    rule.next_run_at = max(rule.next_run_at, time.time() + 600)
             task.status = (
                 "action_required"
                 if error.action_required
                 else ("retry_wait" if task.attempts < task.attempt_limit else "failed")
             )
-            task.available_at = time.time() + min(300, 5 * 2 ** min(task.attempts, 6))
+            task.available_at = time.time() + (600 if task.payload.get("provider") == "xiaohongshu" else min(300, 5 * 2 ** min(task.attempts, 6)))
         else:
             task.status = "succeeded"
             task.error_code = None
@@ -249,8 +263,20 @@ def execute(task_id):
         return
     token, kind, payload = claimed
     try:
+        if payload.get("provider") == "xiaohongshu":
+            with Session() as db:
+                blocked = db.scalar(select(Task.error_code).where(
+                    Task.payload["provider"].as_string() == "xiaohongshu",
+                    Task.status == "action_required",
+                    Task.error_code.in_(("xhs_login_required", "xhs_verification_required"))).limit(1))
+            if blocked:
+                raise ProviderError(blocked, True)
         results = search(payload, settings()) if kind == "search" else None
-        finish(task_id, token, results=results)
+        prepared = None
+        if kind == "ingest" and payload.get("provider") == "xiaohongshu" and payload.get("note_token"):
+            from scout.xiaohongshu import read_note
+            prepared = read_note(payload, settings())
+        finish(task_id, token, results=results, prepared=prepared)
     except ProviderError as exc:
         finish(task_id, token, error=exc)
     except Exception:
@@ -276,7 +302,7 @@ def schedule_due():
             )
             blocked = db.scalar(
                 select(Task.id).where(
-                    Task.rule_id == rule.id, Task.kind == "search", Task.status == "action_required"
+                    (Task.rule_id.in_(select(Rule.id).where(Rule.provider == "xiaohongshu")) if rule.provider == "xiaohongshu" else Task.rule_id == rule.id), Task.status == "action_required"
                 )
             )
             if blocked:
@@ -286,7 +312,7 @@ def schedule_due():
             if not active:
                 if start_rule(db, rule, f"schedule:{rule.id}:{rule.version}:{rule.next_run_at}", scheduled=True) is None:
                     continue
-            rule.next_run_at = time.time() + max(3, rule.interval_seconds)
+            rule.next_run_at = time.time() + max(60 if rule.provider == "xiaohongshu" else 3, rule.interval_seconds)
 
 
 def recover_expired():
@@ -312,7 +338,7 @@ def recover_expired():
             emit(db, task, f"task.{task.status}", error_code=task.error_code)
 
 
-def dispatch_pending(publish, publish_customer=None):
+def dispatch_pending(publish, publish_customer=None, publish_social=None):
     with Session.begin() as db:
         rows = db.scalars(
             select(Outbox)
@@ -328,6 +354,8 @@ def dispatch_pending(publish, publish_customer=None):
         for row in rows:
             task = db.get(Task, row.task_id)
             send = publish_customer if publish_customer and task.payload.get("source_type") == "customer_watch" else publish
+            if publish_social and task.payload.get("source_type") == "social_demand":
+                send = publish_social
             send(row.task_id)  # Crash after publish is safe: duplicate execution is fenced.
             row.publishes += 1
             row.next_publish_at = time.time() + 30  # Reconcile lost broker messages until claimed.

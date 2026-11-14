@@ -2,7 +2,7 @@
 
 持续发现需求信息、汇集客户内外部资料的平台。允许需求模糊，不强制采购金额或商机分级；人员核实，AI 辅助整理及后续客户分析。
 
-当前版本 **0.1：任务骨架与最小采集闭环**。已实现规则管理、持久化任务/Outbox、有限重试与租约恢复、演示、SearXNG 与 Tavily 适配器、正文清洗/精确去重、证据查询、真实统计大屏、地区图、摘要/时效归档和 SSE。已接入钉钉发送/显式认领，增加客户名单监测及独立客户动态。CRM、平台账号、AI 分析尚未实现。默认搜索改为自建 SearXNG，无需搜索 API 密钥；已完成本机真实搜索与连续入库验收，长期稳定性仍待观察。
+当前版本 **0.1：任务骨架与最小采集闭环**。已实现规则管理、持久化任务/Outbox、有限重试与租约恢复、演示、SearXNG 与 Tavily 适配器、正文清洗/精确去重、证据查询、真实统计大屏、地区图、摘要/时效归档和 SSE。已接入钉钉发送/显式认领，增加客户名单监测及独立客户动态。新增小红书扫码与需求采集入口（部署及验证状态见 docs/IMPLEMENTATION-STATUS.md）；CRM、其他平台账号和AI分析尚未实现。默认搜索改为自建 SearXNG，无需搜索 API 密钥；已完成本机真实搜索与连续入库验收，长期稳定性仍待观察。
 
 ## 启动
 
@@ -70,3 +70,5 @@ cd .. && python3 scripts/smoke.py
 [开发计划](docs/ROADMAP.md) · [架构](docs/ARCHITECTURE.md) · [交互规格](docs/UX-SPEC.md) · [设计方向](design-system/ai-opportunity/MASTER.md)
 
 公开仓库：https://github.com/xi-pengfei/AI_Business_Opportunities 。已获用户授权进行本地提交和公开推送，功能分支 `codex/<topic>`。密钥、账号会话、客户资料、数据库、采集内容和运行日志不得入库。
+
+小红书扫码、关键词配置和部署说明见 [小红书需求采集](docs/XIAOHONGSHU.md)。

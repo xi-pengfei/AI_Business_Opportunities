@@ -6,6 +6,7 @@ import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
 import {SourceFields, Information} from "./FlowPanels";
 import {AutoScroll} from "./AutoScroll";
+import { Xiaohongshu } from "./Xiaohongshu";
 import { Customers } from "./Customers";
 import { Spider } from "./Spider";
 import { clock, status, errors } from "./types";
@@ -17,7 +18,7 @@ function App() {
   const [token, setToken] = useState("");
   const [draftToken, setDraftToken] = useState("");
   const [page, setPage] = useState(
-    ["display", "rules", "customers", "tasks", "information"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
+    ["display", "rules", "customers", "xiaohongshu", "tasks", "information"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
   );
   const demo = false;
   const [chartSelection, setChartSelection] = useState<ChartSelection | null>(null);
@@ -336,6 +337,7 @@ function App() {
           {[
             ["rules", "采集规则"],
             ["customers", "客户监测"],
+            ["xiaohongshu", "小红书"],
             ["tasks", "任务运行"],
             ["information", "信息库"],
           ].map(([key, label]) => (
@@ -463,7 +465,7 @@ function App() {
             </section>
             <section className="panel library">
               <h2>
-                信息库 · 待推送 <small>{data.pending_count} 条</small>
+                信息库 <small>{data.pending_count} 条</small>
               </h2>
               <Information
                 items={library}
@@ -498,6 +500,7 @@ function App() {
         </>
       )}
       {!data && <div className="empty">正在读取运行状态…</div>}
+      {!display && page === "xiaohongshu" && <Xiaohongshu request={request} />}
       {!display && page === "customers" && <Customers request={request} manage />}
       {!display && page === "rules" && (
         <div className="rule-layout">
@@ -566,7 +569,7 @@ function App() {
               <p className="empty">还没有规则。从左侧添加第一组关键词。</p>
             ) : (
               rules
-                .filter((r) => r.provider !== "demo")
+                .filter((r) => r.provider !== "demo" && r.provider !== "xiaohongshu")
                 .map((r) => (
                   <article className="rule" key={r.id}>
                     <div>

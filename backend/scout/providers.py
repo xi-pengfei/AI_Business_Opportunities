@@ -56,6 +56,9 @@ def clean_text(raw):
 
 def search(payload, config):
     provider = payload["provider"]
+    if provider == "xiaohongshu":
+        from scout.xiaohongshu import search_notes
+        return search_notes(payload, config)
     if provider == "searxng":
         return search_searxng(payload, config)
     if provider == "demo":

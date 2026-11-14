@@ -94,6 +94,14 @@ export const status: Record<string, string> = {
   failed: "失败",
 };
 export const errors: Record<string, string> = {
+  xhs_login_required: "小红书登录已失效，请到管理台扫码登录",
+  xhs_verification_required: "小红书要求验证，已暂停该来源，请先在账号端完成验证",
+  xhs_connector_authorization: "小红书连接器凭证不匹配，请检查服务端配置",
+  xhs_not_configured: "小红书连接器尚未配置",
+  xhs_unavailable: "小红书连接器暂时无法访问，请稍后重试",
+  xhs_request_failed: "小红书读取失败，等待下一次重试",
+  xhs_invalid_response: "小红书返回内容与接口格式不符，未记为空结果",
+
   searxng_not_configured: "自建搜索服务尚未配置",
   searxng_rate_limited: "搜索入口要求验证或限流，冷却后重试，其他可用入口继续",
   searxng_engines_disabled: "搜索入口未启用，已停止向该入口请求",

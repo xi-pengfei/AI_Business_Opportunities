@@ -8,7 +8,7 @@ from scout.models import Document, Event, Item, Task
 
 
 def public_tasks():
-    return select(Task.id).where(func.coalesce(Task.payload["source_type"].as_string(), "public_tender") == "public_tender")
+    return select(Task.id).where(func.coalesce(Task.payload["source_type"].as_string(), "public_tender") .in_(("public_tender", "social_demand")))
 
 
 def unique_items(demo):
@@ -105,7 +105,7 @@ def collector_status(db, demo, role):
     output = []
     for rule in db.scalars(
         select(Rule).where(
-            Rule.enabled.is_(True), Rule.source_type == "public_tender", Rule.provider == "demo" if demo else Rule.provider != "demo"
+            Rule.enabled.is_(True), Rule.source_type.in_(("public_tender", "social_demand")), Rule.provider == "demo" if demo else Rule.provider != "demo"
         )
     ):
         latest = db.scalar(
