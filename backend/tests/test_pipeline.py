@@ -241,3 +241,27 @@ def test_continuous_rotates_queries_waits_for_ingest_and_stops(database):
     service.schedule_due()
     with database() as db:
         assert db.scalar(select(func.count()).select_from(Task).where(Task.kind == "search")) == 2
+
+
+def test_same_url_changed_excerpt_does_not_create_second_item(database):
+    task_id = make_task(database)
+    drain(database, task_id)
+    with database.begin() as db:
+        original = db.scalar(select(Item))
+        task = service.enqueue(
+            db,
+            kind="ingest",
+            payload={
+                "provider": "demo",
+                "url": original.url,
+                "title": "different snippet",
+                "raw_content": "changed search excerpt",
+                "content_kind": "search_excerpt",
+            },
+            key="changed-excerpt",
+        )
+        tid = task.id
+    service.execute(tid)
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(Item)) == 1
+        assert db.get(Task, tid).result["duplicate"]

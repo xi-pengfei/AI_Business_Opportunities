@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 
 from scout.config import settings
 from scout.db import Session
-from scout.display import chart_facts, collector_status
+from scout.display import chart_facts, collector_status, unique_items
 from scout.models import Attempt, Document, Event, Item, Outbox, Rule, Task
 from scout.service import emit, start_rule
 
@@ -198,8 +198,7 @@ def items(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int 
         return [
             record(i)
             for i in db.scalars(
-                select(Item)
-                .where(Item.is_demo == demo)
+                unique_items(demo)
                 .order_by(Item.created_at.desc(), Item.id)
                 .offset(offset)
                 .limit(limit)
@@ -226,10 +225,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             ).all()
         )
         recent = db.scalars(
-            select(Item)
-            .where(Item.is_demo == demo)
-            .order_by(Item.created_at.desc(), Item.id)
-            .limit(8)
+            unique_items(demo).order_by(Item.created_at.desc(), Item.id).limit(8)
         ).all()
         latest = db.scalars(
             select(Event).where(Event.is_demo == demo).order_by(Event.id.desc()).limit(30)
@@ -256,7 +252,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
             "cursor": max((e.id for e in latest), default=0),
             "task_counts": counts,
             "item_count": db.scalar(
-                select(func.count()).select_from(Item).where(Item.is_demo == demo)
+                select(func.count(func.distinct(Item.url))).where(Item.is_demo == demo)
             ),
             "trend": buckets,
             **chart_facts(db, demo, start),

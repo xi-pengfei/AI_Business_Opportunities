@@ -18,6 +18,7 @@ function App() {
   const [rules, setRules] = useState<Rule[]>([]),
     [tasks, setTasks] = useState<Task[]>([]),
     [items, setItems] = useState<Item[]>([]);
+  const [connectionError, setConnectionError] = useState("");
   const [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
@@ -68,6 +69,7 @@ function App() {
       if (activeView.current !== viewKey) return;
       setData(snapshot);
       setConnected(true);
+      setConnectionError("");
       if (hydrated.current) {
         const fresh = snapshot.items.find((i) => !seen.current.has(i.id));
         if (fresh) setMoving(fresh);
@@ -90,7 +92,7 @@ function App() {
     } catch (e) {
       if (activeView.current !== viewKey) return;
       setConnected(false);
-      setError((e as Error).message);
+      setConnectionError("连接暂时中断，正在自动重连");
     }
   }, [token, demo, page, request]);
   useEffect(() => {
@@ -233,6 +235,11 @@ function App() {
           </label>
           <button disabled={busy}>进入系统</button>
         </form>
+        {connectionError && (
+          <p className="error" role="status">
+            {connectionError}
+          </p>
+        )}
         {error && (
           <p role="alert" className="error">
             {error}
@@ -289,6 +296,11 @@ function App() {
             </button>
           ))}
         </nav>
+      )}
+      {connectionError && (
+        <p className="error" role="status">
+          {connectionError}
+        </p>
       )}
       {error && (
         <p className="error" role="alert">

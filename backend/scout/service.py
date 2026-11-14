@@ -114,12 +114,16 @@ def claim(task_id):
 def save_item(db, task):
     p = task.payload
     url = canonical_url(p["url"])
+    existing = db.scalar(select(Item).where(Item.url == url, Item.is_demo == task.is_demo).limit(1))
+    if existing:
+        emit(db, task, "item.duplicate", item_id=existing.id)
+        return {"item_id": existing.id, "duplicate": True}
     raw = p["raw_content"]
     text = clean_text(raw)
     if not text:
         raise ProviderError("empty_content")
     fingerprint = hashlib.sha256(text.encode()).hexdigest()
-    identity = hashlib.sha256(f"{task.is_demo}|{url}|{fingerprint}".encode()).hexdigest()
+    identity = hashlib.sha256(f"{task.is_demo}|{url}".encode()).hexdigest()
     # Savepoint handles concurrent workers seeing the same URL/content.
     from sqlalchemy.exc import IntegrityError
 

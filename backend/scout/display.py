@@ -5,17 +5,34 @@ from sqlalchemy import func, select
 from scout.models import Document, Event, Item, Task
 
 
+def unique_items(demo):
+    ranked = (
+        select(
+            Item.id,
+            func.row_number()
+            .over(partition_by=Item.url, order_by=(Item.created_at.asc(), Item.id))
+            .label("position"),
+        )
+        .where(Item.is_demo == demo)
+        .subquery()
+    )
+    return select(Item).join(ranked, Item.id == ranked.c.id).where(ranked.c.position == 1)
+
+
 def chart_facts(db, demo, start):
     times = [start + i * 60 for i in range(30)]
     capture = [0] * 30
     collected = [0] * 30
     waiting = [0] * 30
+    first_seen = (
+        select(Item.url, func.min(Item.created_at).label("created_at"))
+        .where(Item.is_demo == demo)
+        .group_by(Item.url)
+        .subquery()
+    )
     # Initial totals preserve the cumulative curve when the time window moves.
     totals = []
-    for model, stamp, extra, buckets in (
-        (Task, Task.created_at, Task.kind == "ingest", capture),
-        (Item, Item.created_at, True, collected),
-    ):
+    for model, stamp, extra, buckets in ((Task, Task.created_at, Task.kind == "ingest", capture),):
         totals.append(
             db.scalar(
                 select(func.count())
@@ -30,6 +47,18 @@ def chart_facts(db, demo, start):
             index = int((timestamp - start) // 60)
             if 0 <= index < 30:
                 buckets[index] += 1
+    totals.append(
+        db.scalar(
+            select(func.count()).select_from(first_seen).where(first_seen.c.created_at < start)
+        )
+        or 0
+    )
+    for timestamp in db.scalars(
+        select(first_seen.c.created_at).where(first_seen.c.created_at >= start)
+    ):
+        index = int((timestamp - start) // 60)
+        if 0 <= index < 30:
+            collected[index] += 1
     deltas = {"task.queued": 1, "task.retry_wait": 1, "task.running": -1}
     initial = sum(
         count * deltas[kind]
@@ -54,7 +83,7 @@ def chart_facts(db, demo, start):
         initial += waiting[index]
         history.append([timestamp, *totals, max(0, initial)])
     sources = db.execute(
-        select(Document.provider, func.count())
+        select(Document.provider, func.count(func.distinct(Item.url)))
         .join(Item, Item.document_id == Document.id)
         .where(Item.is_demo == demo)
         .group_by(Document.provider)
