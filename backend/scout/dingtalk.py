@@ -107,12 +107,13 @@ def tick(config, transport, sessions=Session, now=None):
                     current.error_code = "interrupted_send"
                     db.commit()
                 return current.status
-            if current.status != "claimed":
+            expired = db.get(Item, current.item_id).quality_status == "archived"
+            if current.status != "claimed" and not expired:
                 # Reading alone never claims ownership or releases the next item.
                 return "waiting_claim"
             gate.current_item_id = None
         item = db.scalar(
-            pending_items(False)
+            pending_items(False, now)
             .where(~Item.id.in_(select(Delivery.item_id)))
             .order_by(Item.created_at, Item.id)
             .limit(1)

@@ -42,16 +42,13 @@ def describe(title, raw, published_at=None, now=None):
         if match:
             published = as_date(match.group())
     procurement = bool(re.search(r"招标|采购|投标|询价|磋商", title))
-    reason = "old_information" if published and published < now - timedelta(days=365) else None
+    reason = freshness_reason(published, now)
     if PLACEHOLDERS.search(original) or not original.strip() or original.strip() == title.strip():
         reason = "missing_summary"
     deadline = re.search(r"(?:投标截止时间|响应文件提交截止时间|开标时间)[：:\s]*" + DATE, original)
     if procurement and deadline and as_date(deadline.group()):
         if as_date(deadline.group()).date() < now.date():
             reason = "expired_deadline"
-    if procurement and published and published < now - timedelta(days=90):
-        if not deadline or not as_date(deadline.group()) or as_date(deadline.group()).date() < now.date():
-            reason = "old_procurement"
     notice_years = [int(y) for y in re.findall(r"20\d{2}", title)]
     if re.search(r"公示|通知|申报|拟认定|拟支持|资金支持|奖补|补助|名单", title) and notice_years and max(notice_years) < now.year:
         reason = "historical_notice"
@@ -88,7 +85,7 @@ def describe(title, raw, published_at=None, now=None):
     if not fragments and not reason:
         reason = "missing_fragment"
     return {"text": summary, "fragments": fragments,
-            "category": information_category(title, raw), "quality_status": "archived" if reason else "active",
+            "category": information_category(title, raw), "information_kind": information_kind(title, summary), "quality_status": "archived" if reason else "active",
             "quality_reason": reason, "region": region, "region_evidence": evidence,
             "published_at": published.date().isoformat() if published else None}
 
@@ -138,3 +135,29 @@ def information_category(title, raw):
     if re.search(r"融资|扩建|投产|新闻|动态|财报|年报", title):
         return "企业动态"
     return "其他信息"
+
+
+def freshness_reason(published, now):
+    # Date-only source evidence uses Shanghai civil days, not capture time.
+    if published is None:
+        return "unverified_date"
+    if published.date() > now.date():
+        return "future_publication"
+    if published.date() < (now - timedelta(days=30)).date():
+        return "outside_30_days"
+    return None
+
+
+def information_kind(title, text):
+    """Conservative routing, not a claim that a lead has been verified."""
+    evidence = title + " " + text
+    if re.search(r"政策|指导意见|实施意见|管理办法|工作报告|解读|名单公示|新闻|报道|中标|成交|终止|废标|关于印发|行动方案|实施方案|采购异常", title):
+        return "bulletin"
+    if re.search(r"采购异常|招标异常|终止公告|废标公告|成交公告|中标结果", evidence):
+        return "bulletin"
+    buyer = re.search(r"公司|集团|工厂|医院|大学|学院|学校|委员会|管理局|人民政府|采购人|采购单位|招标人", evidence)
+    demand = re.search(r"采购公告|招标公告|招标项目|竞争性磋商|询价公告|采购需求|拟采购|计划采购|寻求.{0,16}(?:供应商|开发)|需要.{0,16}(?:系统|软件)|建设.{0,16}(?:系统|平台)", evidence)
+    relevant = re.search(r"系统|软件|信息化|数字化|数智|人工智能|智能体|ERP|MES|WMS|AI", evidence, re.I)
+    if buyer and demand and relevant and not re.search(r"招聘|岗位职责|供应商介绍|产品介绍|解决方案推荐", title):
+        return "opportunity"
+    return "bulletin"

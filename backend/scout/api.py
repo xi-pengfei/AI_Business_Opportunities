@@ -195,12 +195,15 @@ def retry_task(task_id: str):
 
 
 @app.get("/api/v1/items", dependencies=[Depends(admin)])
-def items(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
+def items(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
+          status: Literal["active", "archived"] = "active"):
+
     with Session() as db:
         return [
             record(i)
             for i in db.scalars(
-                unique_items(demo)
+                (unique_items(demo) if status == "active" else
+                 select(Item).where(Item.is_demo == demo, Item.quality_status == "archived"))
                 .order_by(Item.created_at.desc(), Item.id)
                 .offset(offset)
                 .limit(limit)
@@ -299,6 +302,10 @@ def snapshot(demo: bool = False, current=Depends(role)):
             "trend": buckets,
             **chart_facts(db, demo, start),
             **discovery_facts(db, demo, now),
+            "bulletins": [record(i) if current == "admin" else {
+                "id": i.id, "title": "行业资讯", "created_at": i.created_at,
+            } for i in db.scalars(unique_items(demo).where(Item.information_kind == "bulletin")
+                                  .order_by(Item.created_at.desc(), Item.id).limit(30))],
             "delivery": {"available": False, "sent": None},
             **assignment_facts(db, demo, now, current == "admin"),
             "regions": [{"name": r, "count": n} for r, n in db.execute(

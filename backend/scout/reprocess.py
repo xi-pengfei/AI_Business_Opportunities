@@ -1,22 +1,42 @@
-"""Idempotent evidence cleanup. Preserve original documents and task history."""
+"""Idempotent evidence cleanup. Preserve original documents and delivery history."""
+import time
 from collections import Counter
+from datetime import datetime
 
 from sqlalchemy import select
 
 from scout.db import Session
-from scout.models import Document, Item
-from scout.quality import describe
+from scout.models import Delivery, Document, Item
+from scout.providers import canonical_url
+from scout.quality import ZONE, describe
+
+
+def reprocess(sessions=Session, now=None):
+    now = time.time() if now is None else now
+    counts = Counter()
+    urls, hashes = set(), set()
+    with sessions.begin() as db:
+        claimed = set(db.scalars(select(Delivery.item_id).where(Delivery.status == "claimed")))
+        rows = db.execute(select(Item, Document).join(Document, Item.document_id == Document.id)
+                          .where(Item.is_demo.is_(False)).order_by(Item.created_at, Item.id))
+        for item, doc in rows:
+            result = describe(doc.title, doc.raw_content, doc.published_at, datetime.fromtimestamp(now, ZONE))
+            url = canonical_url(doc.url)
+            if url in urls or doc.content_hash in hashes:
+                result.update(quality_status="archived", quality_reason="duplicate_information")
+            elif item.id not in claimed and item.created_at <= now - 30 * 86400:
+                result.update(quality_status="archived", quality_reason="unhandled_30_days")
+            urls.add(url)
+            hashes.add(doc.content_hash)
+            for key, value in result.items():
+                setattr(item, key, value)
+            item.url = url
+            counts[result["quality_reason"] or result["information_kind"]] += 1
+    return dict(counts)
 
 
 def main():
-    counts = Counter()
-    with Session.begin() as db:
-        for item, doc in db.execute(select(Item, Document).join(Document, Item.document_id == Document.id).where(Item.is_demo.is_(False))):
-            result = describe(doc.title, doc.raw_content, doc.published_at)
-            for key, value in result.items():
-                setattr(item, key, value)
-            counts[result["quality_reason"] or "active"] += 1
-    print(dict(counts))
+    print(reprocess())
 
 
 if __name__ == "__main__":

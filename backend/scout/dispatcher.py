@@ -3,13 +3,21 @@
 import logging
 import time
 
+from scout.retention import archive_expired
 from scout.service import dispatch_pending, recover_expired, schedule_due
 from scout.worker import run_task
 
 
 def main():
     logging.basicConfig(level=logging.INFO)
+    next_archive = 0
     while True:
+        if time.monotonic() >= next_archive:
+            try:
+                archive_expired()
+                next_archive = time.monotonic() + 60
+            except Exception as exc:
+                logging.warning("archive tick failed (%s); retrying", type(exc).__name__)
         try:
             recover_expired()
             schedule_due()

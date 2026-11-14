@@ -7,10 +7,12 @@ from scout.models import Delivery, Item
 ASSIGNED = ("accepted", "sent", "read", "claimed")
 
 
-def pending_items(demo=False):
+def pending_items(demo=False, now=None):
     from scout.display import unique_items
+    from scout.retention import current_window
 
     return unique_items(demo).where(
+        *((Item.information_kind == "opportunity", *current_window(now)) if not demo else ()),
         ~Item.id.in_(select(Delivery.item_id).where(Delivery.status.in_(ASSIGNED)))
     )
 
@@ -18,16 +20,18 @@ def pending_items(demo=False):
 def assignment_facts(db, demo, now, admin):
     from scout.config import settings
     from scout.display import unique_items
+    from scout.retention import current_window
 
     config = settings()
-    pending = db.scalars(pending_items(demo)).all()
+    pending = db.scalars(pending_items(demo, now)).all()
     allocated = (
-        unique_items(demo)
+        select(Item).where(Item.is_demo == demo)
         .join(Delivery, Delivery.item_id == Item.id)
         .where(Delivery.status.in_(ASSIGNED))
     )
     backlog = db.scalars(
         unique_items(demo).where(
+            *((Item.information_kind == "opportunity", *current_window(now)) if not demo else ()),
             ~Item.id.in_(select(Delivery.item_id).where(Delivery.status == "claimed"))
         )
     ).all()

@@ -1,7 +1,7 @@
 """Only call fixed or administrator-configured search services. Never fetch result URLs in this milestone."""
 
 import ipaddress
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -36,7 +36,7 @@ def canonical_url(value):
             netloc = f"[{netloc}]"
         if port and (parsed.scheme, port) not in {("https", 443), ("http", 80)}:
             netloc += f":{port}"
-        return urlunsplit((parsed.scheme, netloc, parsed.path or "/", parsed.query, ""))
+        return urlunsplit((parsed.scheme, netloc, parsed.path or "/", urlencode(sorted((k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if not k.lower().startswith("utm_") and k.lower() not in {"gclid", "fbclid", "msclkid"})), ""))
     except (ValueError, TypeError):
         raise ProviderError("invalid_source_url") from None
 

@@ -3,6 +3,7 @@ import re
 import time
 
 from sqlalchemy import func, select
+from sqlalchemy import text as sql_text
 
 from scout.config import settings
 from scout.db import Session
@@ -125,7 +126,18 @@ def save_item(db, task):
     if not text:
         raise ProviderError("empty_content")
     quality = describe(p["title"], raw, p.get("published_at"))
+    if task.is_demo and quality["quality_reason"] == "unverified_date":
+        quality.update(quality_status="active", quality_reason=None)
     fingerprint = hashlib.sha256(text.encode()).hexdigest()
+    # Serialize identical content across concurrent PostgreSQL workers.
+    if db.bind.dialect.name == "postgresql":
+        lock_key = int.from_bytes(hashlib.sha256(f"{task.is_demo}|{fingerprint}".encode()).digest()[:8], "big", signed=True)
+        db.execute(sql_text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+    duplicate = db.scalar(select(Item).join(Document, Item.document_id == Document.id).where(
+        Document.content_hash == fingerprint, Item.is_demo == task.is_demo).limit(1))
+    if duplicate:
+        emit(db, task, "item.duplicate", item_id=duplicate.id)
+        return {"item_id": duplicate.id, "duplicate": True}
     identity = hashlib.sha256(f"{task.is_demo}|{url}".encode()).hexdigest()
     # Savepoint handles concurrent workers seeing the same URL/content.
     from sqlalchemy.exc import IntegrityError
@@ -162,6 +174,7 @@ def save_item(db, task):
                 text=quality["text"],
                 fragments=quality["fragments"],
                 category=quality["category"],
+                information_kind=quality["information_kind"],
                 quality_status=quality["quality_status"],
                 quality_reason=quality["quality_reason"],
                 region=quality["region"],

@@ -45,6 +45,8 @@ def seed(database):
                     text=doc.raw_content,
                     fragments=[{"index": 0, "text": doc.raw_content}],
                     created_at=100 + n,
+                    published_at="1970-01-01",
+                    information_kind="opportunity",
                 )
             )
         db.commit()
@@ -229,3 +231,25 @@ def test_claim_arriving_before_send_response_is_not_overwritten(database):
         row = db.get(Delivery, "item-0")
         assert row.status == "claimed"
         assert row.message_id == "msg-proof"
+
+
+def test_bulletin_and_unknown_date_never_push(database):
+    seed(database)
+    with database.begin() as db:
+        db.get(Item, "item-0").information_kind = "bulletin"
+        db.get(Item, "item-1").published_at = None
+    transport = Transport()
+    assert tick(config(), transport, database, 1000) == "empty"
+    assert transport.sent == []
+
+
+def test_archived_unclaimed_message_releases_gate_but_keeps_delivery(database):
+    seed(database)
+    transport = Transport()
+    assert tick(config(), transport, database, 1000) == "accepted"
+    with database.begin() as db:
+        db.get(Item, "item-0").quality_status = "archived"
+    assert tick(config(), transport, database, 1100) == "accepted"
+    assert transport.sent == ["item-0", "item-1"]
+    with database() as db:
+        assert db.get(Delivery, "item-0").status == "accepted"

@@ -265,3 +265,17 @@ def test_same_url_changed_excerpt_does_not_create_second_item(database):
     with database() as db:
         assert db.scalar(select(func.count()).select_from(Item)) == 1
         assert db.get(Task, tid).result["duplicate"]
+
+
+def test_cross_url_identical_content_does_not_create_another_item(database):
+    with database.begin() as db:
+        for n in range(2):
+            task = service.enqueue(db, kind="ingest", key=f"copy-{n}", payload={
+                "provider": "demo", "url": f"https://example.com/copy-{n}", "title": "采购需求",
+                "raw_content": "甲公司计划采购ERP系统，开展数字化建设。", "content_kind": "demo"})
+            result = service.save_item(db, task)
+            assert result["duplicate"] == bool(n)
+        assert db.scalar(select(func.count()).select_from(Item)) == 1
+        assert db.scalar(select(func.count()).select_from(Document)) == 1
+    assert canonical_url("https://example.com/a?utm_source=x&id=8#p") == "https://example.com/a?id=8"
+    assert canonical_url("https://example.com/a?id=9") != canonical_url("https://example.com/a?id=8")
