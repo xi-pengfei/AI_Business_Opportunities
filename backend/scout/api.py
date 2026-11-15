@@ -451,10 +451,8 @@ def display_items(
             )
         total = db.scalar(select(func.count()).select_from(query.subquery()))
         rows = db.scalars(query.order_by(Item.created_at.desc(), Item.id).offset(offset).limit(50))
-        return {"total": total, "items": [item_record(db, i) if current == "admin" else {
-            "id": i.id, "title": "已归集信息（展示模式已脱敏）",
-            "created_at": i.created_at, "is_demo": i.is_demo,
-        } for i in rows]}
+        # 展示令牌与管理台看到同一份数据：不再做条目脱敏。
+        return {"total": total, "items": [item_record(db, i) for i in rows]}
 
 
 @app.get("/api/v1/display/feed")
@@ -464,9 +462,7 @@ def display_feed(after: float = Query(ge=0, allow_inf_nan=False), after_id: str 
         rows = db.scalars(unique_items(False).where(
             (available_at > after) | ((available_at == after) & (Item.id > after_id))
         ).order_by(available_at, Item.id).limit(100)).all()
-        return {"items": [item_record(db, i) if current == "admin" else {
-            "id": i.id, "title": "已归集信息", "created_at": i.created_at, "is_demo": False,
-        } for i in rows], "after": (rows[-1].ai_review.get("reviewed_at") or rows[-1].created_at) if rows else after,
+        return {"items": [item_record(db, i) for i in rows], "after": (rows[-1].ai_review.get("reviewed_at") or rows[-1].created_at) if rows else after,
             "after_id": rows[-1].id if rows else after_id}
 
 
@@ -512,27 +508,18 @@ def snapshot(demo: bool = False, current=Depends(role)):
             ),
             "trend": buckets,
             **chart_facts(db, demo, start),
-            **flow_facts(db, demo, now, current == "admin"),
+            **flow_facts(db, demo, now, True),
             **discovery_facts(db, demo, now),
             "delivery": {"available": False, "sent": None},
-            **assignment_facts(db, demo, now, current == "admin"),
+            **assignment_facts(db, demo, now, True),
             "regions": [{"name": r, "count": n} for r, n in db.execute(
                 select(Item.region, func.count()).where(Item.id.in_(unique_items(demo).with_only_columns(Item.id)), Item.information_kind.in_(("opportunity", "demand")), Item.region.is_not(None)).group_by(Item.region)
             )],
             "region_unknown": db.scalar(select(func.count()).select_from(unique_items(demo).where(Item.information_kind.in_(("opportunity", "demand")), Item.region.is_(None)).subquery())),
             "task_scatter": [{"time": t.created_at, "duration": max(0, (t.updated_at if t.status in ("succeeded", "failed", "action_required") else now) - t.created_at), "status": t.status, "attempts": t.attempts, "kind": t.kind} for t in db.scalars(select(Task).where(Task.id.in_(public_tasks()), Task.is_demo == demo, Task.created_at >= start).order_by(Task.created_at.desc()).limit(300))],
-            "collectors": collector_status(db, demo, current),
-            "items": [
-                item_record(db, i)
-                if current == "admin"
-                else {
-                    "id": i.id,
-                    "title": "已归集信息（展示模式已脱敏）",
-                    "created_at": i.created_at,
-                    "is_demo": i.is_demo,
-                }
-                for i in recent
-            ],
+            "collectors": collector_status(db, demo, "admin"),
+            # 展示令牌与管理台看到同一份信息条目：不再替换标题。
+            "items": [item_record(db, i) for i in recent],
             "events": [
                 {
                     "id": e.id,
@@ -688,10 +675,9 @@ def customer_signals(customer_id: str | None = None, offset: int = Query(0, ge=0
             query = query.where(Customer.id == customer_id)
         total = db.scalar(select(func.count()).select_from(query.subquery()))
         rows = db.execute(query.order_by(CustomerSignal.created_at.desc(), CustomerSignal.id).offset(offset).limit(30))
+        # 客户监控信号对展示令牌同样显示真实名称与标题。
         return {"total": total, "items": [
             {**record(s), "customer_name": c.name, "title": d.title, "content_kind": d.content_kind}
-            if current == "admin" else {"id": s.id, "customer_name": "客户已脱敏", "title": "客户动态已脱敏",
-                "topic": s.topic, "published_at": s.published_at, "created_at": s.created_at}
             for s, c, d in rows]}
 
 

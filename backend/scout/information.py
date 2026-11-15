@@ -34,28 +34,7 @@ def item_record(db, item, admin=True):
         claimed_at=delivery.claimed_at if delivery and not news else None,
         delivery_status=delivery.status if delivery else None,
     )
-    if not admin:
-        row = {
-            k: v
-            for k, v in row.items()
-            if k
-            in (
-                "id",
-                "created_at",
-                "is_demo",
-                "source_type",
-                "source_name",
-                "business_status",
-                "requires_claim",
-                "sent_at",
-                "claimed_at",
-                "delivery_status",
-            )
-        }
-        row.update(
-            title="已归集信息（展示模式已脱敏）",
-            claimed_by="群成员" if delivery and delivery.claimed_by_name and not news else None,
-        )
+    # 展示模式不再脱敏：所有调用方都看到完整条目（admin 参数仅为兼容保留）。
     return row
 
 

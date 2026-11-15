@@ -284,7 +284,7 @@ function App() {
       <main className="login panel">
         <h1>AI商机智能体</h1>
         <p>
-          使用本机 .env 中的 ADMIN_TOKEN 登录管理台；展示令牌仅可查看脱敏大屏。
+          使用本机 .env 中的 ADMIN_TOKEN 登录管理台；展示令牌可查看同一份大屏数据。
         </p>
         <form onSubmit={login}>
           <label>

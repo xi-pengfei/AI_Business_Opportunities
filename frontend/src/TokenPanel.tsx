@@ -102,7 +102,7 @@ export function TokenPanel({open,request,onClose,onRotated}:{open:boolean;reques
                       <button type="button" className="btn btn-sm" disabled={busy} onClick={()=>toggleReveal('display')}>{revealedDisplay?'隐藏':'显示'}</button>
                       <button type="button" className="btn btn-sm" disabled={busy||!info.display.token} onClick={()=>copy(info.display!.token!)}>复制</button>
                     </div>
-                    <p className="hint">给展示大屏用，只能看脱敏数据，不能改任何配置。更换需修改 .env 的 DISPLAY_TOKEN。</p>
+                    <p className="hint">给展示大屏用，可查看与管理台一致的大屏数据，不能改任何配置。更换需修改 .env 的 DISPLAY_TOKEN。</p>
                   </>
                 : <p className="hint">未配置展示令牌，展示大屏需要登录 .env 中配置的 DISPLAY_TOKEN 才能打开。</p>}
             </section>
