@@ -2,21 +2,20 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { CollectorMonitor } from "./CollectorMonitor";
 import "./collector-monitor.css";
-import { SourceDistribution, SearchHit, InformationFlow } from "./Charts";
+import { Charts } from "./Charts";
 import type { ChartSelection } from "./Charts";
-import { RegionMap } from "./RegionMap";
 import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
 import {SourceFeed} from "./SourceFeed";
 import {Information} from "./FlowPanels";
 import { Xiaohongshu } from "./Xiaohongshu";
-import { BusinessFollowup, CustomerFollowup } from "./FollowupPanels";
+import { FollowupPanels } from "./FollowupPanels";
 import { NetworkRules } from "./NetworkRules";
 import { Customers } from "./Customers";
 import { TokenPanel, KeyIcon } from "./TokenPanel";
 import { Spider } from "./Spider";
 import { clock, fullTime, status, errors } from "./types";
-import type { Snapshot, Rule, Task, Item, Execution } from "./types";
+import type { Snapshot, Rule, Task, Item } from "./types";
 import "./style.css";
 import "./display-layout.css";
 import "./black-theme.css";
@@ -315,12 +314,6 @@ function App() {
       </main>
     );
   const display = page === "display";
-  const openItem = useCallback((item: Item) => {
-    if (item.url)
-      request(`/items/${item.id}`)
-        .then(setDetail)
-        .catch((e) => setError(e.message));
-  }, [request]);
 
   const navRules = rules.filter(r=>r.provider!=="demo"&&r.provider!=="xiaohongshu"&&!r.search_spec?.retired).length;
   const liveTasks = tasks.filter(t=>["running","queued","retry_wait"].includes(t.status)).length;
@@ -391,7 +384,12 @@ function App() {
           )}
           {display && data && (
             <>
-              <KpiStrip data={data} />
+              <div className="charts"><Charts data={data} onSelect={setChartSelection} dark /></div>
+              {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
+                selection={chartSelection} request={request} close={() => setChartSelection(null)}
+                open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
+
+              <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
               <div className="workfield">
                 <section className="panel terminal">
                   <h2>信息来源</h2>
@@ -438,7 +436,12 @@ function App() {
                     items={library}
                     lifecycle={false}
                     autoScroll={!moving}
-                    open={openItem}
+                    open={(item) => {
+                      if (item.url)
+                        request(`/items/${item.id}`)
+                          .then(setDetail)
+                          .catch((e) => setError(e.message));
+                    }}
                   />
                 </section>
                 <Spider
@@ -452,30 +455,7 @@ function App() {
                   }
                 />
               </div>
-              <div className="flow-followup">
-                <InformationFlow data={data} dark />
-                <BusinessFollowup data={data} open={openItem} />
-              </div>
-              <div className="charts-duo duo-even">
-                <SourceDistribution data={data} dark />
-                <CustomerFollowup data={data} open={openItem} />
-              </div>
-              <div className="charts-duo duo-hitmap">
-                <SearchHit data={data} dark />
-                <RegionMap data={data} onSelect={setChartSelection} dark />
-              </div>
-              <div className="monitor-row">
-                <section className="panel monitor-cell">
-                  <h2>采集监控</h2>
-                  <div className="monitor-body">
-                    <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
-                  </div>
-                </section>
-                <TerminalStream events={data.events} />
-              </div>
-              {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
-                selection={chartSelection} request={request} close={() => setChartSelection(null)}
-                open={openItem} />}
+              <FollowupPanels data={data} open={item=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
             </>
           )}
           {!data && <div className="empty">正在读取运行状态…</div>}
@@ -709,67 +689,6 @@ function App() {
         </>
       )}
     </main>
-  );
-}
-/* 指标条：今日入库 / 待认领 / 已认领 / 推送成功率，全部来自快照既有字段。 */
-function KpiStrip({ data }: { data: Snapshot }) {
-  const today =
-    data.discovery_calendar?.[data.discovery_calendar.length - 1]?.count ?? 0;
-  const assigned = data.assigned_items || [];
-  const delivered = assigned.filter(
-    (i) => i.delivery_status === "delivered" || i.read_at,
-  ).length;
-  const cards: [string, string, string][] = [
-    ["今日入库", String(today), "当日新增商机信息"],
-    ["待认领", String(data.pending_count), "等待团队跟进"],
-    ["已认领", String(data.assigned_count), "已推送并跟进"],
-    [
-      "推送成功率",
-      assigned.length ? `${Math.round((delivered / assigned.length) * 100)}%` : "—",
-      `${delivered}/${assigned.length} 条送达`,
-    ],
-  ];
-  return (
-    <div className="kpi-strip" role="group" aria-label="核心指标">
-      {cards.map(([label, value, note]) => (
-        <div className="kpi-card panel" key={label}>
-          <span className="kpi-label">{label}</span>
-          <strong className="kpi-value">{value}</strong>
-          <span className="kpi-note">{note}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-/* 终端信息流：tail -f 命令行 + 最近执行记录。 */
-function TerminalStream({ events }: { events: Execution[] }) {
-  const lines = events.slice(0, 6);
-  return (
-    <section className="panel terminal-stream" aria-label="终端信息流">
-      <h2>
-        终端信息流 <small>实时执行记录</small>
-      </h2>
-      <div className="stream-cmd">
-        <span className="stream-prompt">$</span> tail -f 商机.log
-        <i className="stream-cursor" aria-hidden="true" />
-      </div>
-      <div className="stream-lines">
-        {lines.map((e) => (
-          <div className="stream-line" key={e.id}>
-            <time>{clock(e.created_at)}</time>
-            <span>
-              {e.kind === "item.created"
-                ? "信息已归集"
-                : e.kind === "item.duplicate"
-                  ? "重复信息已合并"
-                  : status[e.kind.split(".")[1]] || e.kind}
-            </span>
-            <code>{e.task_id.slice(0, 8)}</code>
-          </div>
-        ))}
-        {!lines.length && <p className="empty">等待执行记录…</p>}
-      </div>
-    </section>
   );
 }
 function ChartRecords({ selection, request, close, open }: {
