@@ -103,14 +103,6 @@ function App() {
     },
     [token],
   );
-  // Hooks must run before the login early-return: defining openItem below the
-  // return would change the hook count between renders and crash the screen.
-  const openItem = useCallback((item: Item) => {
-    if (item.url)
-      request(`/items/${item.id}`)
-        .then(setDetail)
-        .catch((e) => setError(e.message));
-  }, [request]);
   const refresh = useCallback(async () => {
     if (!token || refreshing.current) return;
     refreshing.current = true;
@@ -323,6 +315,12 @@ function App() {
       </main>
     );
   const display = page === "display";
+  const openItem = useCallback((item: Item) => {
+    if (item.url)
+      request(`/items/${item.id}`)
+        .then(setDetail)
+        .catch((e) => setError(e.message));
+  }, [request]);
 
   const navRules = rules.filter(r=>r.provider!=="demo"&&r.provider!=="xiaohongshu"&&!r.search_spec?.retired).length;
   const liveTasks = tasks.filter(t=>["running","queued","retry_wait"].includes(t.status)).length;
