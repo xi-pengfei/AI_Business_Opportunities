@@ -54,7 +54,7 @@ export function Plot({ option, label, onPick }: { option: EChartsCoreOption; lab
         textStyle: {
           color: dark ? "#a6afb9" : "#53616f",
           fontFamily: '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
-          fontSize: 12,
+          fontSize: 13,
         },
         tooltip: {
           trigger: "axis",
@@ -103,7 +103,7 @@ export function Charts({ data, onSelect, dark = false }: { data: Snapshot; onSel
   const nodes=[...new Set(flows.flatMap(f=>[f.source,f.target]))];
   const history=data.search_hit_history||[];
   const queryTotal=data.search_hit_total||0, hitTotal=data.search_hit_success||0;
-  const axis={axisLine:{show:false},axisTick:{show:false},axisLabel:{color:ink,fontSize:11,hideOverlap:true},splitLine:{lineStyle:{color:grid}}};
+  const axis={axisLine:{show:false},axisTick:{show:false},axisLabel:{color:ink,fontSize:12,hideOverlap:true},splitLine:{lineStyle:{color:grid}}};
   return <>
     <section className="panel chart-panel"><h2>来源分布 <small>已启动 · 有效入库 / 条{sourcePages>1?` · ${sourcePage%sourcePages+1}/${sourcePages}`:""}</small></h2><div className="plot-wrap"><Plot label={sources.map(([s,n])=>`${s} ${n}条`).join('，')} option={{
       grid:{left:106,right:30,bottom:26,top:12},xAxis:{...axis,type:'value',minInterval:1,splitNumber:3},
@@ -112,7 +112,7 @@ export function Charts({ data, onSelect, dark = false }: { data: Snapshot; onSel
     }}/>{!sources.length&&<span className="chart-empty">已启动来源暂无有效信息</span>}</div></section>
     <section className="panel chart-panel"><h2>搜索命中率 <small>{queryTotal ? `${(hitTotal/queryTotal*100).toFixed(1)}%` : '—'} · {hitTotal}/{queryTotal} 次</small></h2><div className="plot-wrap"><Plot label="最近一小时搜索命中率：每点汇总五分钟已结束搜索；红色查询次数，黄色有结果次数，绿色命中率。返回结果不代表通过AI审核的商机。" option={{
       color:hitColors,grid:{left:30,right:38,top:32,bottom:26},
-      legend:{top:0,itemWidth:8,itemHeight:8,itemGap:8,textStyle:{color:ink,fontSize:10}},
+      legend:{top:0,itemWidth:8,itemHeight:8,itemGap:8,textStyle:{color:ink,fontSize:11}},
       tooltip:{trigger:'item',formatter:(p:{seriesName:string;value:number[]})=>`${clock(p.value[0]/1000).slice(0,5)} 起五分钟\n${p.seriesName}：${p.value[1]}${p.seriesName==='命中率'?'%':'次'}\n搜索 ${p.value[2]} 次 · 有结果 ${p.value[3]} 次\n异常 ${p.value[4]} 次（计入搜索次数）\n有结果不等于通过AI审核的商机`},
       xAxis:{...axis,type:'time',min:(data.server_time-3600)*1000,max:data.server_time*1000,splitNumber:3,splitLine:{show:false},axisLabel:{...axis.axisLabel,formatter:(v:number)=>clock(v/1000).slice(0,5)}},
       yAxis:[{...axis,type:'value',min:0,minInterval:1,splitNumber:3},
@@ -124,7 +124,7 @@ export function Charts({ data, onSelect, dark = false }: { data: Snapshot; onSel
     }}/>{!history.length&&<span className="chart-empty">最近一小时暂无已结束搜索</span>}</div></section>
     <section className="panel chart-panel"><h2>信息流向 <small>来源 → 去向</small></h2><div className="plot-wrap"><Plot label="已推送信息从采集来源流向待认领、认领人或客户播报" option={{
       tooltip:{trigger:'item'},series:[{type:'sankey',left:8,right:90,top:16,bottom:12,nodeWidth:9,nodeGap:18,draggable:false,
-        label:{color:ink,fontSize:11},data:nodes.map(name=>({name,itemStyle:{color:flowColor(name)}})),links:flows,
+        label:{color:ink,fontSize:12},data:nodes.map(name=>({name,itemStyle:{color:flowColor(name)}})),links:flows,
         lineStyle:{color:'source',curveness:.5,opacity:.22},emphasis:{focus:'adjacency'}}]
     }}/>{!flows.length&&<span className="chart-empty">等待信息推送</span>}</div></section>
     <RegionMap data={data} onSelect={onSelect} dark={dark}/>

@@ -39,7 +39,7 @@ export function RegionMap({data, onSelect, dark=false}: {data: Snapshot; dark?:b
           option={{tooltip:{trigger:'item',formatter:(p:{name:string;value:number})=>`${p.name} · ${p.value} 条`},
             series:[{type:'treemap',name:'省份分布',left:0,right:0,top:0,bottom:0,
               roam:false,nodeClick:false,squareRatio:1,breadcrumb:{show:false},visibleMin:0,childrenVisibleMin:0,
-              label:{show:true,formatter:'{b}\n{c} 条',fontSize:10,lineHeight:12,padding:0,color:'#F1F5F5',overflow:'truncate'},
+              label:{show:true,formatter:'{b}\n{c} 条',fontSize:11,lineHeight:14,padding:0,color:'#F1F5F5',overflow:'truncate'},
               upperLabel:{show:false},itemStyle:{borderColor:dark?'#000':'#fff',borderWidth:1,gapWidth:3},
               levels:[{itemStyle:{borderWidth:0,gapWidth:3}}],
               data:[...regions].sort((a,b)=>a.name.localeCompare(b.name,'zh-CN')).map(r=>({name:r.name,value:r.count,
