@@ -58,3 +58,50 @@ docker compose up -d --force-recreate api notifier claim-listener
 - [Stream 协议与群机器人消息](https://open-dingtalk.github.io/developerpedia/docs/learn/stream/protocol/)
 - [应用访问凭证](https://open.dingtalk.com/document/orgapp/obtain-the-access_token-of-an-internal-app)
 - [选择群](https://open.dingtalk.com/document/orgapp/jsapi-choose-chat)
+
+# 扫码登录与邀请绑定（阶段 2）
+
+登录不再依赖共享账号：管理员先建账号，再发一次性邀请链接；员工打开链接用钉钉扫码完成绑定，此后可直接「钉钉扫码登录」。钉钉身份只挂在 `user_identities`（provider=dingtalk），与密码登录并存、互为补充，用户表不存渠道 ID。
+
+## 一次性配置
+
+1. 钉钉开发者平台 → 应用「AI商机智能体」→ 登录与分享 → 回调域名/回调地址，登记站点回调：
+   `https://<站点域名>/dingtalk`（本机联调为 `http://127.0.0.1:5180/dingtalk`）。
+   未登记的回调会被授权页直接拒绝。
+2. 权限管理申请「通讯录个人信息读权限」（`Contact.User.Read`），否则拿不到 unionId。
+3. `.env` 复用机器人同一应用的凭证，并显式写回调地址（缺省时按站点自身 origin 拼 `/dingtalk`）：
+
+```dotenv
+DINGTALK_APP_KEY=应用ClientID
+DINGTALK_APP_SECRET=应用ClientSecret
+DINGTALK_REDIRECT_URI=https://<站点域名>/dingtalk
+```
+
+4. 重建 api/web：
+
+```sh
+docker compose build api web migrate && docker compose up -d
+```
+
+凭证齐备后登录页自动出现「使用钉钉扫码登录」，无需改代码。
+
+## 使用流程
+
+1. 管理员在「系统设置 → 用户管理」建账号（用户名+初始密码）。
+2. 点该行「邀请绑定」→ 生成一次性链接（7 天有效，只能用一次；重新生成会立刻作废旧链接）。
+3. 把链接发给本人（钉钉里直接发即可）。对方打开后点「使用钉钉扫码完成绑定」，扫码即绑定成功并直接进入系统。
+4. 之后本人可以在登录页选择「钉钉扫码登录」，不必记密码。已绑定状态在用户管理表的「钉钉」列可见。
+
+## 规则与边界
+
+- 一个钉钉账号只能绑定一个用户；已被他人占用时返回 409，需管理员先解除。
+- 同一用户重新邀请可改绑新的钉钉账号，旧身份自动替换（一人一号，不做多身份并存）。
+- 扫码登录只认已绑定账号，不会按手机号/昵称自动建号，避免账号被冒领。
+- 邀请令牌一次性、可过期；`used_at` 非空即失效，过期后需重新生成。
+- 钉钉返回的 openId 是应用级标识，跨应用会变；unionId 稳定，落库同时保存两者。
+- 钉钉未配置时（`DINGTALK_APP_KEY`/`DINGTALK_APP_SECRET` 任一为空），登录页不显示扫码入口，邀请页提示联系管理员。
+
+## 官方依据（扫码登录）
+
+- [获取用户 token](https://open.dingtalk.com/document/orgapp-server/obtain-user-token)
+- [获取用户个人信息](https://open.dingtalk.com/document/orgapp-server/dingtalk-retrieve-user-information)

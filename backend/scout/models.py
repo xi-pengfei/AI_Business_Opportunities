@@ -261,3 +261,20 @@ class ApiKey(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
     last_used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class InviteToken(Base):
+    """一次性邀请：管理员建号后生成链接，员工打开链接扫码绑定钉钉身份（唯一绑定入口）。
+
+    用过即失效（used_at）；同一账号签发新邀请时旧邀请立即过期，避免多条活链接。
+    """
+
+    __tablename__ = "invite_tokens"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    provider: Mapped[str] = mapped_column(String(20), default="dingtalk", server_default="dingtalk")
+    expires_at: Mapped[float] = mapped_column(Float)
+    used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)

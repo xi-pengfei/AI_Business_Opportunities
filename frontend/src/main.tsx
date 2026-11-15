@@ -16,7 +16,7 @@ import { TokenPanel, KeyIcon } from "./TokenPanel";
 import { Users } from "./Users";
 import { Spider } from "./Spider";
 import { clock, fullTime, status, errors } from "./types";
-import type { Snapshot, Rule, Task, Item, Me } from "./types";
+import type { Snapshot, Rule, Task, Item, Me, DingTalkConfig, InviteInfo } from "./types";
 import "./style.css";
 import "./display-layout.css";
 import "./black-theme.css";
@@ -42,6 +42,128 @@ function readableDetail(detail: unknown): string {
   return "";
 }
 type Session = { access_token: string; user: Me };
+
+/** 跳转钉钉扫码授权页；state 防 CSRF，邀请码随会话带到回调页。 */
+function startDingTalk(cfg: DingTalkConfig) {
+  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  sessionStorage.setItem("scout-dd-state", state);
+  const query = new URLSearchParams({
+    redirect_uri: cfg.redirect_uri,
+    response_type: "code",
+    client_id: cfg.client_id,
+    scope: cfg.scope,
+    state,
+    prompt: "consent",
+  });
+  location.href = `https://login.dingtalk.com/oauth2/auth?${query}`;
+}
+
+/** 钉钉扫码回调页：校验 state、凭 authCode 换会话（可携带邀请码完成绑定）。 */
+function DingTalkCallback({ onLogin }: { onLogin: (token: string, user: Me) => void }) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(true);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("authCode") || params.get("code");
+    const state = params.get("state");
+    const expected = sessionStorage.getItem("scout-dd-state");
+    sessionStorage.removeItem("scout-dd-state");
+    const invite = sessionStorage.getItem("scout-invite");
+    if (!code) {
+      setBusy(false);
+      setError("没有拿到钉钉授权码，可能你取消了授权。请返回登录页重试。");
+      return;
+    }
+    if (expected && state && expected !== state) {
+      setBusy(false);
+      setError("登录状态校验失败，请返回登录页重新扫码。");
+      return;
+    }
+    fetch(base + "/auth/dingtalk/callback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authCode: code, invite: invite || null }),
+      signal: AbortSignal.timeout(20000),
+    })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(readableDetail(data.detail) || "钉钉登录失败，请稍后重试");
+        return data;
+      })
+      .then((d) => {
+        sessionStorage.removeItem("scout-invite");
+        onLogin(d.access_token, d.user);
+      })
+      .catch((e) => {
+        setBusy(false);
+        setError((e as Error).message);
+      });
+  }, []);
+  return (
+    <main className="login panel">
+      <h1>钉钉登录</h1>
+      {busy && <p>正在完成钉钉扫码登录…</p>}
+      {error ? (
+        <>
+          <p className="error" role="alert">{error}</p>
+          <button onClick={() => { location.href = "/"; }}>返回登录页</button>
+        </>
+      ) : null}
+    </main>
+  );
+}
+
+/** 邀请绑定落地页：/invite?k=<令牌>，管理员把链接发给员工，员工点按钮扫码绑定。 */
+function InviteBind({ cfg }: { cfg: DingTalkConfig | null }) {
+  const k = new URLSearchParams(location.search).get("k") || "";
+  const [info, setInfo] = useState<InviteInfo | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!k) { setError("链接缺少邀请码，请使用管理员发送的完整链接打开。"); return; }
+    fetch(base + `/auth/invite-info?token=${encodeURIComponent(k)}`, { signal: AbortSignal.timeout(15000) })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(readableDetail(data.detail) || "邀请链接无效");
+        return data as InviteInfo;
+      })
+      .then(setInfo)
+      .catch((e) => setError((e as Error).message));
+  }, [k]);
+  const invalid = !!info && (info.used || info.expired);
+  return (
+    <main className="login panel">
+      <h1>绑定钉钉账号</h1>
+      {error && <p className="error" role="alert">{error}</p>}
+      {info && !invalid && (
+        <>
+          <p>
+            你好，<strong>{info.display_name}</strong>！绑定钉钉后即可扫码登录管理台，
+            商机信息也会推送到你的钉钉。
+          </p>
+          <button
+            disabled={!cfg?.enabled}
+            onClick={() => {
+              sessionStorage.setItem("scout-invite", k);
+              if (cfg) startDingTalk(cfg);
+            }}
+          >
+            {cfg?.enabled ? "使用钉钉扫码完成绑定" : "钉钉登录尚未配置，请联系管理员"}
+          </button>
+          <small>链接 7 天内有效，只能使用一次。</small>
+        </>
+      )}
+      {invalid && (
+        <>
+          <p className="error" role="alert">
+            {info!.used ? "该邀请链接已被使用。" : "该邀请链接已过期。"}
+          </p>
+          <button onClick={() => { location.href = "/"; }}>回到登录页</button>
+        </>
+      )}
+      {!info && !error && <p>正在读取邀请信息…</p>}
+    </main>
+  );
+}
 const savedSession: Session | null = (() => {
   try {
     const raw = sessionStorage.getItem("scout-session");
@@ -94,6 +216,14 @@ function App() {
     [connected, setConnected] = useState(false);
   const [informationStatus, setInformationStatus] = useState("active");
   const [tokenOpen, setTokenOpen] = useState(false);
+  const [ddCfg, setDdCfg] = useState<DingTalkConfig | null>(null);
+  useEffect(() => {
+    // 公开配置：登录页据此显示钉钉扫码入口
+    fetch(base + "/auth/dingtalk/config", { signal: AbortSignal.timeout(10000) })
+      .then((r) => r.json())
+      .then(setDdCfg)
+      .catch(() => setDdCfg({ enabled: false, client_id: "", scope: "", redirect_uri: "" }));
+  }, []);
   const [detail, setDetail] = useState<
     (Item & { evidence: { raw_content: string; content_kind: string } }) | null
   >(null);
@@ -346,6 +476,17 @@ function App() {
       setBusy(false);
     }
   }
+  if (location.pathname === "/dingtalk")
+    return (
+      <DingTalkCallback
+        onLogin={(t, u) => {
+          setToken(t);
+          setMe(u);
+          history.replaceState({}, "", "/");
+        }}
+      />
+    );
+  if (location.pathname === "/invite") return <InviteBind cfg={ddCfg} />;
   if (!token)
     return (
       <main className="login panel">
@@ -376,6 +517,14 @@ function App() {
           </label>
           <button disabled={busy}>{busy ? "登录中…" : "进入系统"}</button>
         </form>
+        {ddCfg?.enabled && (
+          <>
+            <div className="sso-divider" aria-hidden="true"><span>或</span></div>
+            <button type="button" className="sso-dingtalk" onClick={() => startDingTalk(ddCfg)}>
+              使用钉钉扫码登录
+            </button>
+          </>
+        )}
         {connectionError && (
           <p className="error" role="status">
             {connectionError}
@@ -459,7 +608,6 @@ function App() {
           )}
           {display && data && (
             <>
-              <div className="charts"><Charts data={data} onSelect={setChartSelection} dark /></div>
               {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
                 selection={chartSelection} request={request} close={() => setChartSelection(null)}
                 open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
@@ -530,6 +678,7 @@ function App() {
                 />
               </div>
               <FollowupPanels data={data} open={item=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
+              <div className="charts"><Charts data={data} onSelect={setChartSelection} dark /></div>
               <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
             </>
           )}

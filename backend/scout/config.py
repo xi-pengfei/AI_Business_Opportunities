@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     dingtalk_robot_code: str = ""
     dingtalk_conversation_id: str = ""
     dingtalk_group_name: str = "钉钉群"
+    # 扫码登录（OAuth2）：回调地址默认用请求自身的 origin + /dingtalk，
+    # 有反向代理/固定域名时显式配置，且必须与钉钉开放平台登记的回调一致。
+    dingtalk_redirect_uri: str = ""
+    dingtalk_login_scope: str = "openid Contact.User.Read"
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek-flash"
     allow_demo: bool = False

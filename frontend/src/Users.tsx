@@ -14,6 +14,8 @@ export function Users({request,me}:{request:(path:string,options?:RequestInit)=>
   const [username,setUsername]=useState(''),[displayName,setDisplayName]=useState(''),[password,setPassword]=useState(''),[role,setRole]=useState<'admin'|'member'>('member');
   // 行内重置密码
   const [resetting,setResetting]=useState<string|null>(null),[newPass,setNewPass]=useState('');
+  // 钉钉邀请链接
+  const [invite,setInvite]=useState<{name:string;url:string}|null>(null);
   async function load(){try{setRows(await request('/users'));}catch(e){setError(e instanceof Error?e.message:'读取用户失败');}}
   useEffect(()=>{void load();},[]);
   async function run(fn:()=>Promise<void>,success:string){
@@ -27,6 +29,14 @@ export function Users({request,me}:{request:(path:string,options?:RequestInit)=>
       await request('/users',{method:'POST',body:JSON.stringify({username:username.trim(),password,display_name:displayName.trim(),role})});
       setUsername('');setDisplayName('');setPassword('');setRole('member');
     },'账号已创建，把用户名和初始密码告诉对方即可登录。');
+  }
+  async function inviteDingtalk(u:UserRow){
+    setBusy(true);setError('');setInvite(null);
+    try{
+      const d=await request(`/users/${u.id}/invite-link`,{method:'POST',body:JSON.stringify({provider:'dingtalk'})});
+      setInvite({name:u.display_name||u.username,url:`${location.origin}/invite?k=${d.token}`});
+    }catch(e){setError(e instanceof Error?e.message:'生成邀请失败');}
+    finally{setBusy(false);}
   }
   return <>
     {error&&<p className="error" role="alert">{error}</p>}
@@ -47,14 +57,24 @@ export function Users({request,me}:{request:(path:string,options?:RequestInit)=>
         <button type="submit" className="btn btn-primary" disabled={busy}><PlusIcon/>创建账号</button>
       </form>
     </section>
+    {invite&&
+      <section className="panel invite-panel">
+        <h2>钉钉邀请链接已生成 <button className="btn btn-sm" onClick={()=>setInvite(null)}>关闭</button></h2>
+        <p className="page-sub">把下面的链接发给 <strong>{invite.name}</strong>：TA 用钉钉打开并扫码后即完成绑定，之后可以「钉钉扫码登录」直接进系统。链接 7 天内有效、只能用一次；重新生成会让旧链接立即作废。</p>
+        <div className="screen-link">
+          <input readOnly value={invite.url} onFocus={e=>e.currentTarget.select()}/>
+          <button className="btn btn-primary" onClick={()=>{void navigator.clipboard.writeText(invite.url);setMessage('邀请链接已复制，去钉钉发给对方吧。');}}>复制链接</button>
+        </div>
+      </section>}
     <section className="panel">
       <h2>全部账号 <small>{rows.length} 人</small></h2>
       <div className="table-scroll">
         <table>
           <thead><tr>
-            <th style={{width:'18%'}}>用户名</th><th style={{width:'18%'}}>姓名</th>
-            <th style={{width:'14%'}}>角色</th><th style={{width:'14%'}}>状态</th>
-            <th style={{width:'18%'}}>创建时间</th><th style={{width:'18%'}}>操作</th>
+            <th style={{width:'16%'}}>用户名</th><th style={{width:'13%'}}>姓名</th>
+            <th style={{width:'9%'}}>角色</th><th style={{width:'9%'}}>状态</th>
+            <th style={{width:'9%'}}>钉钉</th>
+            <th style={{width:'13%'}}>创建时间</th><th style={{width:'31%'}}>操作</th>
           </tr></thead>
           <tbody>
             {rows.map(u=><tr key={u.id}>
@@ -62,6 +82,7 @@ export function Users({request,me}:{request:(path:string,options?:RequestInit)=>
               <td>{u.display_name||'—'}</td>
               <td><span className={'st '+(u.role==='admin'?'st-on':'st-queued')}>{u.role==='admin'?'管理员':'成员'}</span></td>
               <td><span className={'st '+(u.is_active!==false?'st-on':'st-off')}>{u.is_active!==false?'启用':'已停用'}</span></td>
+              <td>{u.identities?.includes('dingtalk')?<span className="st st-on">已绑定</span>:<span className="muted">未绑定</span>}</td>
               <td className="muted">{stamp(u.created_at)}</td>
               <td>
                 {resetting===u.id
@@ -73,6 +94,9 @@ export function Users({request,me}:{request:(path:string,options?:RequestInit)=>
                     </span>
                   : <>
                       <button className="btn btn-sm" disabled={busy} onClick={()=>{setResetting(u.id);setNewPass('');}}>重置密码</button>
+                      <button className="btn btn-sm" disabled={busy||u.is_active===false}
+                        title={u.is_active===false?'账号已停用，先启用再发邀请':'生成一次性钉钉绑定链接'}
+                        onClick={()=>inviteDingtalk(u)}>邀请绑定</button>
                       <button className="btn btn-sm" disabled={busy||u.id===me.id}
                         title={u.id===me.id?'不能停用自己':'切换启用/停用'}
                         onClick={()=>run(async()=>{await request(`/users/${u.id}`,{method:'PATCH',body:JSON.stringify({is_active:u.is_active===false})})},u.is_active===false?'账号已启用。':'账号已停用，对方将无法登录。')}>

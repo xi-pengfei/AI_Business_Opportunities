@@ -109,6 +109,19 @@ export type Me = {
   role: "admin" | "member";
   is_active?: boolean;
   created_at?: number;
+  identities?: string[];
+};
+export type DingTalkConfig = {
+  enabled: boolean;
+  client_id: string;
+  scope: string;
+  redirect_uri: string;
+};
+export type InviteInfo = {
+  provider: string;
+  display_name: string;
+  used: boolean;
+  expired: boolean;
 };
 export type Task = {
   id: string;

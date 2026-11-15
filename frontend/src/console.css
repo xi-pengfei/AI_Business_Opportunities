@@ -1629,3 +1629,40 @@ button.console-side-foot:hover {
   background: var(--surface);
   color: var(--ink);
 }
+
+/* ---------- 钉钉扫码登录 / 邀请绑定 ---------- */
+.sso-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-3);
+  font-size: 12px;
+  margin: 6px 0 2px;
+}
+.sso-divider::before,
+.sso-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.sso-dingtalk { width: 100%; }
+.invite-panel h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.invite-panel .screen-link {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.invite-panel .screen-link input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  background: var(--surface);
+  color: var(--ink);
+}

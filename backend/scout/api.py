@@ -8,9 +8,9 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 
-from scout import auth
+from scout import auth, dingtalk_sso
 from scout.assignments import assignment_facts, pending_items
 from scout.config import settings
 from scout.db import Session
@@ -25,11 +25,13 @@ from scout.models import (
     CustomerSignal,
     Document,
     Event,
+    InviteToken,
     Item,
     Outbox,
     Rule,
     Task,
     User,
+    UserIdentity,
 )
 from scout.product_rules import ProductInput, ProductSpec
 from scout.service import emit, start_rule
@@ -150,7 +152,15 @@ class UserCreate(BaseModel):
 @app.get("/api/v1/users", dependencies=[Depends(auth.require_admin)])
 def list_users():
     with Session() as db:
-        return [auth.user_record(u) for u in db.scalars(select(User).order_by(User.created_at))]
+        bound = set(
+            db.scalars(
+                select(UserIdentity.user_id).where(UserIdentity.provider == "dingtalk")
+            )
+        )
+        return [
+            {**auth.user_record(u), "identities": ["dingtalk"] if u.id in bound else []}
+            for u in db.scalars(select(User).order_by(User.created_at))
+        ]
 
 
 @app.post("/api/v1/users", status_code=201, dependencies=[Depends(auth.require_admin)])
@@ -203,6 +213,141 @@ def update_user(user_id: str, body: UserPatch):
             if value is not None:
                 setattr(target, field, value)
         return auth.user_record(target)
+
+
+# ---------- 钉钉扫码登录与一次性邀请绑定 ----------
+
+
+@app.get("/api/v1/auth/dingtalk/config")
+def dingtalk_config(request: Request):
+    """公开配置：登录页据此显示扫码按钮并构造跳转地址。"""
+    s = settings()
+    enabled = bool(s.dingtalk_app_key and s.dingtalk_app_secret)
+    redirect_uri = s.dingtalk_redirect_uri or (str(request.base_url).rstrip("/") + "/dingtalk")
+    return {
+        "enabled": enabled,
+        "client_id": s.dingtalk_app_key,
+        "scope": s.dingtalk_login_scope,
+        "redirect_uri": redirect_uri,
+    }
+
+
+class DingTalkCallbackInput(BaseModel):
+    auth_code: str = Field(min_length=1, max_length=400, alias="authCode")
+    invite: str | None = Field(default=None, max_length=200)
+
+    model_config = {"populate_by_name": True}
+
+
+@app.post("/api/v1/auth/dingtalk/callback")
+def dingtalk_callback(body: DingTalkCallbackInput):
+    """扫码回调：带邀请令牌 → 绑定身份并登录；不带 → 已绑定账号直接登录。"""
+    s = settings()
+    if not (s.dingtalk_app_key and s.dingtalk_app_secret):
+        raise HTTPException(400, "钉钉登录未配置：请在 .env 设置 DINGTALK_APP_KEY / DINGTALK_APP_SECRET")
+    try:
+        identity = dingtalk_sso.exchange_identity(s.dingtalk_app_key, s.dingtalk_app_secret, body.auth_code)
+    except dingtalk_sso.DingTalkError as exc:
+        log.warning("钉钉登录链路失败: %s", exc)
+        raise HTTPException(502, str(exc))
+    now = time.time()
+    with Session.begin() as db:
+        existing = db.scalar(
+            select(UserIdentity).where(
+                UserIdentity.provider == "dingtalk",
+                UserIdentity.open_id == identity["open_id"],
+            )
+        )
+        if body.invite:
+            invite = db.scalar(select(InviteToken).where(InviteToken.token == body.invite))
+            if invite is None or invite.provider != "dingtalk":
+                raise HTTPException(400, "邀请链接无效，请向管理员确认")
+            if invite.used_at:
+                raise HTTPException(409, "邀请链接已被使用，请联系管理员重新生成")
+            if invite.expires_at < now:
+                raise HTTPException(409, "邀请链接已过期，请联系管理员重新生成")
+            target = db.get(User, invite.user_id)
+            if target is None or not target.is_active:
+                raise HTTPException(403, "邀请对应的账号不存在或已停用")
+            if existing and existing.user_id != target.id:
+                raise HTTPException(409, "该钉钉账号已绑定其他用户，如需改绑请联系管理员")
+            if existing is None:
+                # 邀请即改绑：替换该账号原有的钉钉身份，保持一人一号
+                db.execute(
+                    delete(UserIdentity).where(
+                        UserIdentity.user_id == target.id,
+                        UserIdentity.provider == "dingtalk",
+                    )
+                )
+                db.add(
+                    UserIdentity(
+                        user_id=target.id,
+                        provider="dingtalk",
+                        open_id=identity["open_id"],
+                        union_id=identity["union_id"],
+                        bound_at=now,
+                    )
+                )
+            invite.used_at = now
+        else:
+            if existing is None:
+                raise HTTPException(
+                    403, "该钉钉尚未绑定任何账号：请先用管理员发送的邀请链接完成绑定"
+                )
+            target = db.get(User, existing.user_id)
+            if target is None or not target.is_active:
+                raise HTTPException(403, "账号已被停用，请联系管理员")
+    return {"access_token": auth.issue_token(target), "user": auth.user_record(target)}
+
+
+@app.get("/api/v1/auth/invite-info")
+def invite_info(token: str = Query(min_length=1, max_length=200)):
+    """邀请链接落地页展示用：告诉访客这是给谁的邀请、是否仍有效。"""
+    with Session() as db:
+        row = db.scalar(select(InviteToken).where(InviteToken.token == token))
+        if row is None:
+            raise HTTPException(404, "邀请链接无效，请向管理员确认")
+        target = db.get(User, row.user_id)
+        return {
+            "provider": row.provider,
+            "display_name": (target.display_name or target.username) if target else "",
+            "used": bool(row.used_at),
+            "expired": row.expires_at < time.time(),
+        }
+
+
+class InviteLinkInput(BaseModel):
+    provider: Literal["dingtalk"] = "dingtalk"
+
+
+@app.post("/api/v1/users/{user_id}/invite-link", status_code=201)
+def create_invite_link(user_id: str, body: InviteLinkInput, admin=Depends(auth.require_admin)):
+    """管理员生成一次性邀请链接；旧邀请立即作废，7 天有效。"""
+    with Session.begin() as db:
+        target = db.get(User, user_id)
+        if target is None:
+            raise HTTPException(404, "用户不存在")
+        if not target.is_active:
+            raise HTTPException(400, "账号已停用，请先启用再发邀请")
+        for row in db.scalars(
+            select(InviteToken).where(
+                InviteToken.user_id == user_id,
+                InviteToken.provider == body.provider,
+                InviteToken.used_at.is_(None),
+            )
+        ):
+            row.expires_at = time.time() - 1
+        invite = InviteToken(
+            token=secrets.token_urlsafe(24),
+            user_id=user_id,
+            created_by=admin.id,
+            provider=body.provider,
+            expires_at=time.time() + 7 * 24 * 3600,
+            created_at=time.time(),
+        )
+        db.add(invite)
+        db.flush()
+        return {"token": invite.token, "expires_at": invite.expires_at}
 
 
 # ---------- 个人 API 密钥（替代旧 ADMIN_TOKEN 供脚本使用） ----------
