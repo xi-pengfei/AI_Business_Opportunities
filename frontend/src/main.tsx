@@ -13,9 +13,10 @@ import { FollowupPanels } from "./FollowupPanels";
 import { NetworkRules } from "./NetworkRules";
 import { Customers } from "./Customers";
 import { TokenPanel, KeyIcon } from "./TokenPanel";
+import { Users } from "./Users";
 import { Spider } from "./Spider";
 import { clock, fullTime, status, errors } from "./types";
-import type { Snapshot, Rule, Task, Item } from "./types";
+import type { Snapshot, Rule, Task, Item, Me } from "./types";
 import "./style.css";
 import "./display-layout.css";
 import "./black-theme.css";
@@ -23,11 +24,43 @@ import "./design-tokens.css";
 import "./console.css";
 
 const base = "/api/v1";
+type Session = { access_token: string; user: Me };
+const savedSession: Session | null = (() => {
+  try {
+    const raw = sessionStorage.getItem("scout-session");
+    return raw ? (JSON.parse(raw) as Session) : null;
+  } catch {
+    return null;
+  }
+})();
 function App() {
-  const [token, setToken] = useState("");
-  const [draftToken, setDraftToken] = useState("");
+  const [token, setToken] = useState(savedSession?.access_token ?? "");
+  const [me, setMe] = useState<Me | null>(savedSession?.user ?? null);
+  const [draftUser, setDraftUser] = useState("");
+  const [draftPass, setDraftPass] = useState("");
+  useEffect(() => {
+    if (token && me) sessionStorage.setItem("scout-session", JSON.stringify({ access_token: token, user: me }));
+    else sessionStorage.removeItem("scout-session");
+  }, [token, me]);
+  // 大屏免登录链接：/display?k=<令牌>，校验通过直接亮屏
+  useEffect(() => {
+    const k = new URLSearchParams(location.search).get("k");
+    if (!k) return;
+    fetch(base + "/display/snapshot", {
+      headers: { Authorization: `Bearer ${k}` },
+      signal: AbortSignal.timeout(15000),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("invalid");
+        setToken(k);
+        setMe(null);
+        setPage("display");
+        history.replaceState({}, "", "/display");
+      })
+      .catch(() => {});
+  }, []);
   const [page, setPage] = useState(
-    ["display", "rules", "customers", "xiaohongshu", "tasks", "information"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
+    ["display", "rules", "customers", "xiaohongshu", "tasks", "information", "users"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
   );
   const demo = false;
   const [fullscreen,setFullscreen]=useState(!!document.fullscreenElement);
@@ -91,6 +124,11 @@ function App() {
         signal: options.signal ?? AbortSignal.timeout(15000),
       });
       if (!response.ok) {
+        if (response.status === 401 && me) {
+          // 会话过期：清空并回到登录页
+          setToken("");
+          setMe(null);
+        }
         const result = await response.json().catch(() => ({}));
         throw new Error(
           typeof result.detail === "string"
@@ -100,7 +138,7 @@ function App() {
       }
       return response.json();
     },
-    [token],
+    [token, me],
   );
   const refresh = useCallback(async () => {
     if (!token || refreshing.current) return;
@@ -261,18 +299,32 @@ function App() {
     addEventListener("popstate", back);
     return () => removeEventListener("popstate", back);
   }, []);
+  function logout() {
+    setToken("");
+    setMe(null);
+    setData(null);
+    setPage("rules");
+    history.replaceState({}, "", "/");
+  }
   async function login(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const r = await fetch(base + "/display/snapshot", {
-        headers: { Authorization: `Bearer ${draftToken}` },
+      const r = await fetch(base + "/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: draftUser.trim(), password: draftPass }),
         signal: AbortSignal.timeout(15000),
       });
-      if (!r.ok) throw Error("访问令牌无效或服务未就绪");
-      setToken(draftToken);
-      setDraftToken("");
+      const result = await r.json().catch(() => ({}));
+      if (!r.ok)
+        throw Error(
+          typeof result.detail === "string" ? result.detail : "登录失败，请稍后重试",
+        );
+      setToken(result.access_token);
+      setMe(result.user);
+      setDraftPass("");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -283,22 +335,31 @@ function App() {
     return (
       <main className="login panel">
         <h1>AI商机智能体</h1>
-        <p>
-          使用本机 .env 中的 ADMIN_TOKEN 登录管理台；展示令牌可查看同一份大屏数据。
-        </p>
+        <p>使用账号登录管理台；展示大屏请打开管理员生成的大屏链接（无需登录）。</p>
         <form onSubmit={login}>
           <label>
-            访问令牌
+            用户名
+            <input
+              type="text"
+              required
+              autoComplete="username"
+              autoFocus
+              value={draftUser}
+              onChange={(e) => setDraftUser(e.target.value)}
+            />
+          </label>
+          <label>
+            密码
             <input
               aria-invalid="false"
               type="password"
               required
-              autoComplete="off"
-              value={draftToken}
-              onChange={(e) => setDraftToken(e.target.value)}
+              autoComplete="current-password"
+              value={draftPass}
+              onChange={(e) => setDraftPass(e.target.value)}
             />
           </label>
-          <button disabled={busy}>进入系统</button>
+          <button disabled={busy}>{busy ? "登录中…" : "进入系统"}</button>
         </form>
         {connectionError && (
           <p className="error" role="status">
@@ -310,7 +371,7 @@ function App() {
             {error}
           </p>
         )}
-        <small>令牌仅保留在当前页面内存，刷新后需要重新登录。</small>
+        <small>没有账号？请联系系统管理员开通；首次登录后建议立即修改密码。</small>
       </main>
     );
   const display = page === "display";
@@ -323,6 +384,7 @@ function App() {
     xiaohongshu:["小红书","账号与关键词"],
     tasks:["任务运行","实时任务"],
     information:["信息库","已入库档案"],
+    users:["系统设置","用户管理"],
   } as Record<string,[string,string]>)[page]||["管理台",""];
   const navIcon=(paths:string[])=>(
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -335,6 +397,7 @@ function App() {
     ["xiaohongshu","小红书",["M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-5 4z","M8 9h8","M8 12h5"]],
     ["tasks","任务运行",["M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18","M12 7v5l3.5 2"]],
     ["information","信息库",["M4 19.5A2.5 2.5 0 0 1 6.5 17H20","M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"]],
+    ["users","用户管理",["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2","M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z","M23 21v-2a4 4 0 0 0-3-3.87","M16 3.13a4 4 0 0 1 0 7.75"]],
   ];
   return (
     <main className={display ? `screen${fullscreen ? " is-fullscreen" : ""}` : "workspace"}>
@@ -347,10 +410,7 @@ function App() {
                 管理台
               </button>
               <button hidden={fullscreen}
-                onClick={() => {
-                  setToken("");
-                  setData(null);
-                }}
+                onClick={logout}
               >
                 退出
               </button>
@@ -506,7 +566,7 @@ function App() {
               </div>
             </div>
             <nav className="console-nav" aria-label="管理导航">
-              {NAV.map(([key, label, paths]) => (
+              {NAV.filter(([key]) => key !== "users" || me?.role === "admin").map(([key, label, paths]) => (
                 <button
                   key={key}
                   className="console-nav-item"
@@ -523,8 +583,8 @@ function App() {
             <button type="button" className="console-side-foot" onClick={() => setTokenOpen(true)} aria-haspopup="dialog">
               <span className="console-avatar" aria-hidden="true"><KeyIcon/></span>
               <div>
-                <b>本机令牌</b>
-                <small>管理员权限 · 单用户</small>
+                <b>{me?.display_name || "账号中心"}</b>
+                <small>{me?.role === "admin" ? "系统管理员 · 账号中心" : "成员 · 账号中心"}</small>
               </div>
             </button>
           </aside>
@@ -537,14 +597,8 @@ function App() {
               </div>
               <div className="toolbar">
                 <button onClick={() => navigate("display")}>展示大屏</button>
-                <button
-                  onClick={() => {
-                    setToken("");
-                    setData(null);
-                  }}
-                >
-                  退出
-                </button>
+                <span className="top-user" title={`已登录：${me?.username ?? ""}`}>{me?.display_name}</span>
+                <button onClick={logout}>退出</button>
               </div>
             </header>
             <div className="console-body">
@@ -566,7 +620,8 @@ function App() {
               {!data && <div className="empty">正在读取运行状态…</div>}
               {page === "xiaohongshu" && <Xiaohongshu request={request} />}
               {page === "customers" && <Customers request={request} manage />}
-              {page === "rules" && <NetworkRules rules={rules} request={request} onSaved={refresh} liveTasks={liveTasks} />}
+              {page === "rules" && <NetworkRules rules={rules} request={request} onSaved={refresh} liveTasks={liveTasks} me={me} />}
+              {page === "users" && me?.role === "admin" && <Users request={request} me={me} />}
               {page === "tasks" && (
                 <section className="panel">
                   <h2>
@@ -680,11 +735,8 @@ function App() {
           <TokenPanel
             open={tokenOpen}
             request={request}
+            user={me}
             onClose={() => setTokenOpen(false)}
-            onRotated={(t) => {
-              setToken(t);
-              setMessage("令牌已更新，本会话已自动改用新令牌。");
-            }}
           />
         </>
       )}

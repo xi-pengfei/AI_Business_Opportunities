@@ -9,8 +9,8 @@ if p.exists():
     print('.env already exists; existing credentials preserved.')
 else:
     p.touch(mode=0o600)
-    p.write_text('POSTGRES_PASSWORD='+secrets.token_hex(24)+'\nADMIN_TOKEN='+secrets.token_urlsafe(32)+'\nDISPLAY_TOKEN='+secrets.token_urlsafe(32)+'\nTAVILY_API_KEY=\nALLOW_DEMO=false\n')
-    print('Created .env with private local credentials. No credentials printed.')
+    p.write_text('POSTGRES_PASSWORD='+secrets.token_hex(24)+'\nADMIN_USERNAME=admin\nADMIN_PASSWORD='+secrets.token_urlsafe(18)+'\nDISPLAY_TOKEN='+secrets.token_urlsafe(32)+'\nTAVILY_API_KEY=\nALLOW_DEMO=false\n')
+    print('Created .env with private local credentials. Read .env for the initial admin password.')
 if 'SEARXNG_SECRET=' not in p.read_text():
     with p.open('a') as f:
         f.write('\nSEARXNG_SECRET='+secrets.token_hex(32)+'\n')

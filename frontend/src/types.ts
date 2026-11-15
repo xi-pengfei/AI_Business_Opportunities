@@ -100,6 +100,15 @@ export type Rule = {
   enabled: boolean;
   interval_seconds: number;
   max_results: number;
+  owner_user_id?: string | null;
+};
+export type Me = {
+  id: string;
+  username: string;
+  display_name: string;
+  role: "admin" | "member";
+  is_active?: boolean;
+  created_at?: number;
 };
 export type Task = {
   id: string;

@@ -16,7 +16,7 @@
 docker compose up -d --build
 ```
 
-打开 http://localhost:5180 ，使用 `.env` 中的 `ADMIN_TOKEN`。独立展示入口 http://localhost:5180/display 可使用 `DISPLAY_TOKEN`，仅返回脱敏数据。令牌仅保存在页面内存；浏览器刷新后重新登录。
+打开 http://localhost:5180 ，使用 `.env` 中的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录（首次启动会自动创建该管理员账号，登录后可在「账号中心」修改密码）。管理员可在「用户管理」开通成员账号，成员只能修改自己创建的规则，但可查看全部规则。展示大屏用管理员在「账号中心」生成的大屏链接（`/display?k=…`）免登录打开，仅返回脱敏数据。
 
 1. 新建关键词规则，默认选择 SearXNG 自建搜索。
 2. 新建规则保存后自动开始连续采集，在任务页查看进度。

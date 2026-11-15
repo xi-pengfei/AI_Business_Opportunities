@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from scout import api, service
+from scout import api, auth, service
 from scout.config import settings
 from scout.models import Base
 
@@ -18,7 +18,7 @@ def database(monkeypatch):
     sessions = sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(service, "Session", sessions)
     monkeypatch.setattr(api, "Session", sessions)
-    monkeypatch.setenv("ADMIN_TOKEN", "test-admin")
+    monkeypatch.setattr(auth, "Session", sessions)
     monkeypatch.setenv("DISPLAY_TOKEN", "test-display")
     monkeypatch.setenv("ALLOW_DEMO", "true")
     monkeypatch.setenv("TAVILY_API_KEY", "")
@@ -30,5 +30,12 @@ def database(monkeypatch):
 
 @pytest.fixture
 def client(database):
-    with TestClient(api.app, headers={"Authorization": "Bearer test-admin"}) as c:
+    """启动时种子管理员，用账号密码登录换成 JWT —— 与真实调用链一致。"""
+    with TestClient(api.app) as c:
+        result = c.post(
+            "/api/v1/auth/login",
+            json={"username": settings().admin_username, "password": settings().admin_password},
+        )
+        assert result.status_code == 200, result.text
+        c.headers["Authorization"] = f"Bearer {result.json()['access_token']}"
         yield c

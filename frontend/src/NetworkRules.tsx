@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import type {Rule} from './types';
+import type {Me,Rule} from './types';
 
 type Draft={id?:string;name:string;synonyms:string;actions:string;regions:string;enabled:boolean};
 type Review={product:string;synonyms:string[];actions:string[];regions:string[];queries:string[];notes:string[];model:string};
@@ -15,7 +15,8 @@ function span(seconds:number){
   return `${Math.floor(seconds/86400)} 天`;
 }
 
-export function NetworkRules({rules,request,onSaved,liveTasks=0}:{rules:Rule[];request:(path:string,options?:RequestInit)=>Promise<any>;onSaved:()=>Promise<void>;liveTasks?:number}) {
+export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:Rule[];request:(path:string,options?:RequestInit)=>Promise<any>;onSaved:()=>Promise<void>;liveTasks?:number;me:Me|null}) {
+  const canManage=(r:Rule)=>me?.role==='admin'||!!me&&r.owner_user_id===me.id;
   const [draft,setDraft]=useState<Draft>(empty),[checked,setChecked]=useState<Review|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
   const [open,setOpen]=useState(false);
@@ -75,8 +76,12 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0}:{rules:Rule[];r
     const values=adopt&&checked?{product:checked.product,synonyms:checked.synonyms,actions:checked.actions,regions:checked.regions}:{product:draft.name,synonyms:draft.synonyms,actions:draft.actions,regions:draft.regions};
     const enabled=draft.enabled;
     setBusy(true);setError('');
-    try{await request(draft.id?`/network-rules/${draft.id}`:'/network-rules',{method:draft.id?'PATCH':'POST',body:JSON.stringify({...values,enabled})});
-      setChecked(null);setDraft(empty);setOpen(false);setMessage((adopt?'已采纳 AI 建议并保存。':'已保留你的内容并保存。')+(enabled?'保持运行，新批次使用新配置。':'保持停止，需要时点击开始采集。'));await onSaved();
+    try{const saved=await request(draft.id?`/network-rules/${draft.id}`:'/network-rules',{method:draft.id?'PATCH':'POST',body:JSON.stringify({...values,enabled})});
+      setChecked(null);setDraft(empty);setOpen(false);
+      const dups=saved?.duplicates||[];
+      setMessage((adopt?'已采纳 AI 建议并保存。':'已保留你的内容并保存。')+(enabled?'保持运行，新批次使用新配置。':'保持停止，需要时点击开始采集。')
+        +(dups.length?` 注意：与已有词条关键词重叠（${dups.map((d:any)=>`${d.name}（${d.owner}）`).join('、')}），可能产生重复采集。`:''));
+      await onSaved();
     }catch(e){setError(e instanceof Error?e.message:'保存失败');}finally{setBusy(false);}
   }
   async function toggle(r:Rule){setBusy(true);setError('');try{await request(`/rules/${r.id}`,{method:'PATCH',body:JSON.stringify({enabled:!r.enabled})});if(draft.id===r.id)setDraft(d=>({...d,enabled:!r.enabled}));setMessage(r.enabled?'已停止后续采集，当前批次继续完成。':'已开始按保存的配置采集。');await onSaved();}catch(e){setError(e instanceof Error?e.message:'停止失败');}finally{setBusy(false);}}
@@ -127,7 +132,7 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0}:{rules:Rule[];r
               const uptime=r.enabled&&startedAt?Date.now()/1000-startedAt:null;
               return <tr key={r.id}>
                 <td className="idx-cell">{(current-1)*pageSize+i+1}</td>
-                <td><button type="button" className="cell-link" disabled={busy} onClick={()=>edit(r)} title="打开并修改这个业务名称">{r.search_spec?.product||r.name}</button></td>
+                <td><button type="button" className="cell-link" disabled={busy||!canManage(r)} onClick={()=>edit(r)} title={canManage(r)?'打开并修改这个业务名称':'他人创建的词条，仅可查看'}>{r.search_spec?.product||r.name}</button></td>
                 <td title={syn.length?syn.join('、'):'暂无同义词'}><div className="chip-row">{syn.length>0&&<span className="chip">{syn[0]}</span>}{syn.length>1&&<span className="chip">+{syn.length-1}</span>}{!syn.length&&<span className="muted">无</span>}</div></td>
                 <td title={region}>{region}</td>
                 <td><span className={'st '+(r.enabled?'st-on':'st-off')}>{r.enabled?'运行中':'已停止'}</span></td>
@@ -138,9 +143,11 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0}:{rules:Rule[];r
                 </td>
                 <td className="num-cell" title="有效条数 ÷ 采集到的总条数">{rate!=null?`${rate}%`:'—'}</td>
                 <td><div className="actions">
-                  {r.enabled
-                    ? <button className="btn btn-sm btn-stop" disabled={busy} onClick={()=>toggle(r)}>停止</button>
-                    : <button className="btn btn-sm btn-start" disabled={busy} onClick={()=>toggle(r)}>开始采集</button>}
+                  {canManage(r)
+                    ? (r.enabled
+                        ? <button className="btn btn-sm btn-stop" disabled={busy} onClick={()=>toggle(r)}>停止</button>
+                        : <button className="btn btn-sm btn-start" disabled={busy} onClick={()=>toggle(r)}>开始采集</button>)
+                    : <span className="muted" title="他人创建的词条，仅可查看">—</span>}
                 </div></td>
               </tr>;
             })}

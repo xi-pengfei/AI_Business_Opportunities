@@ -8,8 +8,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     database_url: str = "postgresql+psycopg://scout:scout@127.0.0.1:55436/scout"
     redis_url: str = "redis://127.0.0.1:56386/0"
-    admin_token: str = ""
     display_token: str = ""
+    admin_username: str = "admin"
+    admin_password: str = "admin123456"
     tavily_api_key: str = ""
     searxng_engines: str = "duckduckgo,brave"
     searxng_url: str = "http://searxng:8080"

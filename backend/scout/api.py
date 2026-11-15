@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import secrets
 import time
 from typing import Annotated, Literal
@@ -9,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, text
 
+from scout import auth
 from scout.assignments import assignment_facts, pending_items
 from scout.config import settings
 from scout.db import Session
@@ -16,6 +18,7 @@ from scout.display import chart_facts, collector_status, discovery_facts, public
 from scout.flow_metrics import flow_facts
 from scout.information import item_record
 from scout.models import (
+    ApiKey,
     Attempt,
     ConsoleToken,
     Customer,
@@ -26,20 +29,32 @@ from scout.models import (
     Outbox,
     Rule,
     Task,
+    User,
 )
 from scout.product_rules import ProductInput, ProductSpec
 from scout.service import emit, start_rule
 
 app = FastAPI(title="AI商机智能体", version="0.1.0")
 
+log = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+def bootstrap_admin():
+    """首次启动种子系统管理员；此后账号完全由 users 表管理。"""
+    try:
+        auth.ensure_bootstrap()
+    except Exception:
+        log.exception("管理员种子失败（users 表可能尚未迁移完成）")
+
 
 def console_token(purpose: str) -> tuple[str, str]:
-    """Effective token for a purpose plus where it comes from ("db" or "env")."""
+    """有效令牌及其来源（"db" / "env"）。管理令牌已下线，仅保留大屏展示令牌。"""
     with Session() as db:
         row = db.get(ConsoleToken, purpose)
         if row and row.token:
             return row.token, "db"
-    return (settings().admin_token if purpose == "admin" else settings().display_token), "env"
+    return settings().display_token, "env"
 
 
 def rotate_console_token(purpose: str) -> str:
@@ -58,52 +73,182 @@ def masked(token: str) -> str:
     return f"••••••••{token[-4:]}" if len(token) >= 8 else "••••••••"
 
 
-def role(authorization: Annotated[str | None, Header()] = None):
-    token = (authorization or "").removeprefix("Bearer ")
-    admin_value, _ = console_token("admin")
-    if token and admin_value and secrets.compare_digest(token, admin_value):
-        return "admin"
-    if (
-        token
-        and settings().display_token
-        and secrets.compare_digest(token, settings().display_token)
-    ):
-        return "display"
-    raise HTTPException(401, "需要有效的访问令牌")
+def own_or_admin(rule: Rule, user: User) -> None:
+    """规则全员可见（只读），但只能操作自己创建的；管理员不受限。"""
+    if user.role == "admin":
+        return
+    if rule.owner_user_id == user.id:
+        return
+    raise HTTPException(403, "只能操作自己创建的规则；如需调整他人规则请联系管理员")
 
 
-def admin(current=Depends(role)):
-    if current != "admin":
-        raise HTTPException(403, "此操作需要管理员权限")
+# ---------- 登录与会话 ----------
 
 
-@app.get("/api/v1/console-token", dependencies=[Depends(admin)])
+class LoginInput(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
+
+
+@app.post("/api/v1/auth/login")
+def login(body: LoginInput):
+    username = body.username.strip()
+    if auth.login_attempts_left(username) <= 0:
+        raise HTTPException(429, "失败次数过多，请 15 分钟后再试")
+    with Session() as db:
+        user = db.scalar(select(User).where(User.username == username))
+        if not user or not auth.verify_password(user.password_hash, body.password):
+            auth.record_login_failure(username)
+            raise HTTPException(401, "用户名或密码不正确")
+        if not user.is_active:
+            raise HTTPException(403, "账号已被停用，请联系管理员")
+    auth.reset_login_failures(username)
+    return {"access_token": auth.issue_token(user), "user": auth.user_record(user)}
+
+
+@app.get("/api/v1/auth/me")
+def me(user=Depends(auth.current_user)):
+    return auth.user_record(user)
+
+
+class PasswordInput(BaseModel):
+    old_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+@app.post("/api/v1/auth/change-password")
+def change_password(body: PasswordInput, user=Depends(auth.current_user)):
+    with Session.begin() as db:
+        row = db.get(User, user.id)
+        if row is None or not auth.verify_password(row.password_hash, body.old_password):
+            raise HTTPException(401, "原密码不正确")
+        row.password_hash = auth.hash_password(body.new_password)
+    return {"ok": True}
+
+
+# ---------- 用户管理（系统管理员） ----------
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=2, max_length=64, pattern=r"^[A-Za-z0-9_.@-]+$")
+    password: str = Field(min_length=8, max_length=128)
+    display_name: str = Field(default="", max_length=80)
+    role: Literal["admin", "member"] = "member"
+
+
+@app.get("/api/v1/users", dependencies=[Depends(auth.require_admin)])
+def list_users():
+    with Session() as db:
+        return [auth.user_record(u) for u in db.scalars(select(User).order_by(User.created_at))]
+
+
+@app.post("/api/v1/users", status_code=201, dependencies=[Depends(auth.require_admin)])
+def create_user(body: UserCreate):
+    with Session.begin() as db:
+        if db.scalar(select(User).where(User.username == body.username).limit(1)):
+            raise HTTPException(409, "用户名已存在")
+        user = User(
+            username=body.username,
+            password_hash=auth.hash_password(body.password),
+            display_name=body.display_name.strip(),
+            role=body.role,
+            created_at=time.time(),
+        )
+        db.add(user)
+        db.flush()
+        return auth.user_record(user)
+
+
+class UserPatch(BaseModel):
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    display_name: str | None = Field(default=None, max_length=80)
+    role: Literal["admin", "member"] | None = None
+    is_active: bool | None = None
+
+
+@app.patch("/api/v1/users/{user_id}", dependencies=[Depends(auth.require_admin)])
+def update_user(user_id: str, body: UserPatch):
+    with Session.begin() as db:
+        target = db.get(User, user_id)
+        if target is None:
+            raise HTTPException(404, "用户不存在")
+        demoting = (
+            target.role == "admin"
+            and target.is_active
+            and (body.role == "member" or body.is_active is False)
+        )
+        if demoting:
+            active_admins = db.scalar(
+                select(func.count()).select_from(
+                    select(User).where(User.role == "admin", User.is_active.is_(True)).subquery()
+                )
+            )
+            if (active_admins or 0) <= 1:
+                raise HTTPException(409, "至少保留一名启用的管理员")
+        if body.password is not None:
+            target.password_hash = auth.hash_password(body.password)
+        for field in ("display_name", "role", "is_active"):
+            value = getattr(body, field)
+            if value is not None:
+                setattr(target, field, value)
+        return auth.user_record(target)
+
+
+# ---------- 个人 API 密钥（替代旧 ADMIN_TOKEN 供脚本使用） ----------
+
+
+class ApiKeyInput(BaseModel):
+    name: str = Field(default="", max_length=80)
+
+
+@app.get("/api/v1/api-keys")
+def list_api_keys(user=Depends(auth.current_user)):
+    with Session() as db:
+        rows = db.scalars(
+            select(ApiKey)
+            .where(ApiKey.user_id == user.id, ApiKey.revoked.is_(False))
+            .order_by(ApiKey.created_at.desc())
+        )
+        return [
+            {"id": k.id, "name": k.name, "prefix": k.prefix, "created_at": k.created_at, "last_used_at": k.last_used_at}
+            for k in rows
+        ]
+
+
+@app.post("/api/v1/api-keys", status_code=201)
+def create_api_key(body: ApiKeyInput, user=Depends(auth.current_user)):
+    plain, info = auth.new_api_key(user.id, body.name)
+    return {**info, "key": plain}
+
+
+@app.delete("/api/v1/api-keys/{key_id}", status_code=204)
+def revoke_api_key(key_id: str, user=Depends(auth.current_user)):
+    with Session.begin() as db:
+        row = db.get(ApiKey, key_id)
+        if row is None:
+            raise HTTPException(404, "密钥不存在")
+        if row.user_id != user.id and user.role != "admin":
+            raise HTTPException(403, "只能管理自己的密钥")
+        row.revoked = True
+
+
+# ---------- 大屏令牌（屏幕场景保留；管理令牌已下线，由账号体系替代） ----------
+
+
+@app.get("/api/v1/console-token", dependencies=[Depends(auth.require_admin)])
 def read_console_token(reveal: bool = False):
-    token, source = console_token("admin")
-    if not token:
-        raise HTTPException(404, "尚未配置管理员令牌")
-    display_value, display_source = console_token("display")
-    payload = {
-        "masked": masked(token),
-        "source": source,
-        "display": {
-            "masked": masked(display_value) if display_value else "",
-            "source": display_source,
-            "present": bool(display_value),
-        },
-    }
-    if reveal:
+    token, source = console_token("display")
+    payload = {"masked": masked(token), "source": source, "present": bool(token)}
+    if reveal and token:
         payload["token"] = token
-        if display_value:
-            payload["display"]["token"] = display_value
     return payload
 
 
-@app.post("/api/v1/console-token/rotate", dependencies=[Depends(admin)])
-def rotate_admin_token():
-    if not console_token("admin")[0]:
-        raise HTTPException(404, "尚未配置管理员令牌")
-    token = rotate_console_token("admin")
+@app.post("/api/v1/console-token/rotate", dependencies=[Depends(auth.require_admin)])
+def rotate_display_token():
+    if not console_token("display")[0]:
+        raise HTTPException(404, "尚未配置展示令牌")
+    token = rotate_console_token("display")
     return {"token": token, "masked": masked(token), "rotated_at": time.time()}
 
 
@@ -162,7 +307,7 @@ def ready():
         raise HTTPException(503, "数据库不可用") from None
 
 
-@app.get("/api/v1/providers", dependencies=[Depends(admin)])
+@app.get("/api/v1/providers", dependencies=[Depends(auth.current_user)])
 def providers():
     return {
         "searxng": {"configured": bool(settings().searxng_url)},
@@ -171,7 +316,7 @@ def providers():
     }
 
 
-@app.get("/api/v1/rules", dependencies=[Depends(admin)])
+@app.get("/api/v1/rules", dependencies=[Depends(auth.current_user)])
 def rules():
     with Session() as db:
         return [
@@ -179,7 +324,7 @@ def rules():
         ]
 
 
-@app.post("/api/v1/rules/review", dependencies=[Depends(admin)])
+@app.post("/api/v1/rules/review", dependencies=[Depends(auth.current_user)])
 def review_rule(body: RuleInput):
     from scout.keyword_review import review
     try:
@@ -190,7 +335,7 @@ def review_rule(body: RuleInput):
 
 
 
-@app.post("/api/v1/network-rules/review", dependencies=[Depends(admin)])
+@app.post("/api/v1/network-rules/review", dependencies=[Depends(auth.current_user)])
 def review_product_rule(body: ProductSpec):
     from scout.product_rules import review_product
     try:
@@ -199,45 +344,75 @@ def review_product_rule(body: ProductSpec):
         raise HTTPException(503, "AI检查暂时不可用，尚未保存或启动") from None
 
 
-def save_product_rule(body, rule_id=None):
-    spec=ProductSpec.model_validate(body.model_dump())
+def synonym_duplicates(db, spec: ProductSpec, exclude_id: str | None) -> list[dict]:
+    """撞库：找出同义词与现有词条重叠的其他规则，提示但不阻止保存。"""
+    wanted = {s.casefold() for s in spec.synonyms}
+    if not wanted:
+        return []
+    rows = db.execute(
+        select(Rule, User.display_name)
+        .outerjoin(User, User.id == Rule.owner_user_id)
+        .where(Rule.source_type == "public_tender", Rule.provider != "demo")
+    ).all()
+    hits: dict[str, dict] = {}
+    for rule, owner_name in rows:
+        if rule.id == exclude_id or (rule.search_spec or {}).get("retired"):
+            continue
+        theirs = {s.casefold() for s in (rule.search_spec or {}).get("synonyms", [])}
+        overlap = sorted(wanted & theirs)
+        if overlap:
+            hits[rule.id] = {
+                "id": rule.id,
+                "name": rule.name,
+                "owner": owner_name or "系统",
+                "overlap": overlap[:4],
+            }
+    return list(hits.values())[:3]
+
+
+def save_product_rule(body, rule_id=None, user=None):
+    spec = ProductSpec.model_validate(body.model_dump())
     with Session.begin() as db:
-        rule=db.scalar(select(Rule).where(Rule.id==rule_id).with_for_update()) if rule_id else None
-        if rule_id and (not rule or rule.source_type!='public_tender' or (rule.search_spec or {}).get('retired')):
+        rule = db.scalar(select(Rule).where(Rule.id == rule_id).with_for_update()) if rule_id else None
+        if rule_id and (not rule or rule.source_type != "public_tender" or (rule.search_spec or {}).get("retired")):
             raise HTTPException(404, "网络采集词条不存在")
-        others=db.scalars(select(Rule).where(Rule.source_type=='public_tender',Rule.provider!='demo')).all()
-        if any(r.id!=rule_id and not (r.search_spec or {}).get('retired') and r.name.casefold()==spec.product.casefold() for r in others):
+        if rule is not None:
+            own_or_admin(rule, user)
+        others = db.scalars(select(Rule).where(Rule.source_type == "public_tender", Rule.provider != "demo")).all()
+        if any(r.id != rule_id and not (r.search_spec or {}).get("retired") and r.name.casefold() == spec.product.casefold() for r in others):
             raise HTTPException(409, "已存在同名产品，请修改现有词条")
         if rule is None:
-            rule=Rule(source_type='public_tender')
+            rule = Rule(source_type="public_tender")
             db.add(rule)
         else:
-            rule.version+=1
-        rule.name=spec.product
-        rule.search_spec=spec.model_dump()
-        rule.query='\n'.join(spec.searches())
-        rule.provider='searxng'
-        rule.interval_seconds=0
-        rule.max_results=20
+            rule.version += 1
+        rule.name = spec.product
+        rule.search_spec = spec.model_dump()
+        rule.query = "\n".join(spec.searches())
+        rule.provider = "searxng"
+        rule.interval_seconds = 0
+        rule.max_results = 20
+        if rule.owner_user_id is None and user is not None:
+            rule.owner_user_id = user.id
         if body.enabled and not rule.started_at:
-            rule.started_at=time.time()
-        rule.enabled=body.enabled
-        rule.next_run_at=time.time()
+            rule.started_at = time.time()
+        rule.enabled = body.enabled
+        rule.next_run_at = time.time()
         db.flush()
-        return record(rule)
+        return {**record(rule), "duplicates": synonym_duplicates(db, spec, rule.id)}
 
 
-@app.post("/api/v1/network-rules", status_code=201, dependencies=[Depends(admin)])
-def create_product_rule(body: ProductInput):
-    return save_product_rule(body)
+@app.post("/api/v1/network-rules", status_code=201, dependencies=[Depends(auth.current_user)])
+def create_product_rule(body: ProductInput, user=Depends(auth.current_user)):
+    return save_product_rule(body, user=user)
 
 
-@app.patch("/api/v1/network-rules/{rule_id}", dependencies=[Depends(admin)])
-def edit_product_rule(rule_id: str, body: ProductInput):
-    return save_product_rule(body, rule_id)
+@app.patch("/api/v1/network-rules/{rule_id}", dependencies=[Depends(auth.current_user)])
+def edit_product_rule(rule_id: str, body: ProductInput, user=Depends(auth.current_user)):
+    return save_product_rule(body, rule_id, user)
 
 
-@app.get("/api/v1/network-rules/stats", dependencies=[Depends(admin)])
+@app.get("/api/v1/network-rules/stats", dependencies=[Depends(auth.current_user)])
 def network_rule_stats():
     """Per-rule collection footprint: batches, success rate and effective items."""
     with Session() as db:
@@ -300,23 +475,28 @@ def network_rule_stats():
         ]
 
 
-@app.post("/api/v1/rules", status_code=201, dependencies=[Depends(admin)])
-def create_rule(body: RuleInput):
+@app.post("/api/v1/rules", status_code=201, dependencies=[Depends(auth.current_user)])
+def create_rule(body: RuleInput, user=Depends(auth.current_user)):
     if body.provider == "demo" and not settings().allow_demo:
         raise HTTPException(422, "演示适配器未启用")
     with Session.begin() as db:
-        rule = Rule(**body.model_dump(), source_type="social_demand" if body.provider == "xiaohongshu" else "public_tender")
+        rule = Rule(
+            **body.model_dump(),
+            source_type="social_demand" if body.provider == "xiaohongshu" else "public_tender",
+            owner_user_id=user.id,
+        )
         db.add(rule)
         db.flush()
         return record(rule)
 
 
-@app.patch("/api/v1/rules/{rule_id}", dependencies=[Depends(admin)])
-def enable_rule(rule_id: str, body: EnableInput):
+@app.patch("/api/v1/rules/{rule_id}", dependencies=[Depends(auth.current_user)])
+def enable_rule(rule_id: str, body: EnableInput, user=Depends(auth.current_user)):
     with Session.begin() as db:
         rule = db.scalar(select(Rule).where(Rule.id == rule_id).with_for_update())
         if not rule:
             raise HTTPException(404, "规则不存在")
+        own_or_admin(rule, user)
         if body.provider is not None and rule.source_type != "public_tender":
             raise HTTPException(422, "平台采集请在对应平台页面修改")
         if body.enabled is not None:
@@ -333,16 +513,17 @@ def enable_rule(rule_id: str, body: EnableInput):
         return record(rule)
 
 
-@app.post("/api/v1/rules/{rule_id}/run", status_code=202, dependencies=[Depends(admin)])
-def run_rule(rule_id: str, idempotency_key: Annotated[str, Header(min_length=1, max_length=100)]):
+@app.post("/api/v1/rules/{rule_id}/run", status_code=202, dependencies=[Depends(auth.current_user)])
+def run_rule(rule_id: str, idempotency_key: Annotated[str, Header(min_length=1, max_length=100)], user=Depends(auth.current_user)):
     with Session.begin() as db:
         rule = db.scalar(select(Rule).where(Rule.id == rule_id).with_for_update())
         if not rule:
             raise HTTPException(404, "规则不存在")
+        own_or_admin(rule, user)
         return task_record(start_rule(db, rule, f"manual:{rule_id}:{idempotency_key}"))
 
 
-@app.get("/api/v1/tasks", dependencies=[Depends(admin)])
+@app.get("/api/v1/tasks", dependencies=[Depends(auth.current_user)])
 def tasks(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
     with Session() as db:
         return [
@@ -357,7 +538,7 @@ def tasks(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int 
         ]
 
 
-@app.get("/api/v1/tasks/{task_id}", dependencies=[Depends(admin)])
+@app.get("/api/v1/tasks/{task_id}", dependencies=[Depends(auth.current_user)])
 def task_detail(task_id: str):
     with Session() as db:
         task = db.get(Task, task_id)
@@ -374,12 +555,16 @@ def task_detail(task_id: str):
         }
 
 
-@app.post("/api/v1/tasks/{task_id}/retry", status_code=202, dependencies=[Depends(admin)])
-def retry_task(task_id: str):
+@app.post("/api/v1/tasks/{task_id}/retry", status_code=202, dependencies=[Depends(auth.current_user)])
+def retry_task(task_id: str, user=Depends(auth.current_user)):
     with Session.begin() as db:
         task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
         if not task:
             raise HTTPException(404, "任务不存在")
+        if task.rule_id:
+            rule = db.get(Rule, task.rule_id)
+            if rule:
+                own_or_admin(rule, user)
         if task.status not in ("action_required", "failed"):
             raise HTTPException(409, "仅待配置或失败任务可手动重试")
         task.status = "queued"
@@ -392,7 +577,7 @@ def retry_task(task_id: str):
         return task_record(task)
 
 
-@app.get("/api/v1/items", dependencies=[Depends(admin)])
+@app.get("/api/v1/items", dependencies=[Depends(auth.current_user)])
 def items(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
           status: Literal["active", "archived", "review_pending", "review_required", "merged"] = "active"):
 
@@ -409,7 +594,7 @@ def items(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int 
         ]
 
 
-@app.post("/api/v1/items/{item_id}/review", dependencies=[Depends(admin)])
+@app.post("/api/v1/items/{item_id}/review", dependencies=[Depends(auth.require_admin)])
 def retry_review(item_id: str):
     with Session.begin() as db:
         item = db.get(Item, item_id)
@@ -420,7 +605,7 @@ def retry_review(item_id: str):
         return {"status": "review_pending"}
 
 
-@app.get("/api/v1/items/{item_id}", dependencies=[Depends(admin)])
+@app.get("/api/v1/items/{item_id}", dependencies=[Depends(auth.current_user)])
 def item_detail(item_id: str):
     with Session() as db:
         item = db.get(Item, item_id)
@@ -437,7 +622,7 @@ def display_items(
     region: str | None = Query(default=None, max_length=20),
     offset: int = Query(0, ge=0),
     demo: bool = False,
-    current=Depends(role),
+    current=Depends(auth.screen),
 ):
     if end <= start or end - start > 86400 * 90:
         raise HTTPException(422, "请选择90天以内的有效时间范围")
@@ -456,7 +641,7 @@ def display_items(
 
 
 @app.get("/api/v1/display/feed")
-def display_feed(after: float = Query(ge=0, allow_inf_nan=False), after_id: str = "", current=Depends(role)):
+def display_feed(after: float = Query(ge=0, allow_inf_nan=False), after_id: str = "", current=Depends(auth.screen)):
     with Session() as db:
         available_at = func.coalesce(Item.ai_review["reviewed_at"].as_float(), Item.created_at)
         rows = db.scalars(unique_items(False).where(
@@ -467,7 +652,7 @@ def display_feed(after: float = Query(ge=0, allow_inf_nan=False), after_id: str 
 
 
 @app.get("/api/v1/display/snapshot")
-def snapshot(demo: bool = False, current=Depends(role)):
+def snapshot(demo: bool = False, current=Depends(auth.screen)):
     now = time.time()
     with Session() as db:
         counts = dict(
@@ -535,7 +720,7 @@ def snapshot(demo: bool = False, current=Depends(role)):
 
 @app.get("/api/v1/display/events")
 async def stream(
-    request: Request, demo: bool = False, after: int = Query(0, ge=0), current=Depends(role)
+    request: Request, demo: bool = False, after: int = Query(0, ge=0), current=Depends(auth.screen)
 ):
     async def events():
         cursor = after
@@ -616,15 +801,15 @@ class CustomerInput(BaseModel):
             raise ValueError("请输入有效的公开网址") from None
 
 
-@app.get("/api/v1/customers", dependencies=[Depends(admin)])
+@app.get("/api/v1/customers", dependencies=[Depends(auth.current_user)])
 def list_customers():
     from scout.customers import customer_records
     with Session() as db:
         return customer_records(db)
 
 
-@app.post("/api/v1/customers", status_code=201, dependencies=[Depends(admin)])
-def create_customer(body: CustomerInput):
+@app.post("/api/v1/customers", status_code=201, dependencies=[Depends(auth.current_user)])
+def create_customer(body: CustomerInput, user=Depends(auth.current_user)):
     from sqlalchemy.exc import IntegrityError
 
     from scout.customers import queries
@@ -635,7 +820,7 @@ def create_customer(body: CustomerInput):
             db.flush()
             rule = Rule(name=customer.name, query=queries(customer), provider="searxng",
                 source_type="customer_watch", customer_id=customer.id, enabled=True,
-                interval_seconds=0, max_results=20)
+                interval_seconds=0, max_results=20, owner_user_id=user.id)
             db.add(rule)
             db.flush()
             return {**record(customer), "rule_id": rule.id, "enabled": True}
@@ -643,8 +828,8 @@ def create_customer(body: CustomerInput):
         raise HTTPException(409, "此客户已存在，请直接查看或启用现有监测") from None
 
 
-@app.patch("/api/v1/customers/{customer_id}", dependencies=[Depends(admin)])
-def update_customer(customer_id: str, body: CustomerInput):
+@app.patch("/api/v1/customers/{customer_id}", dependencies=[Depends(auth.current_user)])
+def update_customer(customer_id: str, body: CustomerInput, user=Depends(auth.current_user)):
     from sqlalchemy.exc import IntegrityError
 
     from scout.customers import queries
@@ -654,6 +839,8 @@ def update_customer(customer_id: str, body: CustomerInput):
             if customer is None:
                 raise HTTPException(404, "客户不存在")
             rule = db.scalar(select(Rule).where(Rule.customer_id == customer_id).with_for_update())
+            if rule is not None:
+                own_or_admin(rule, user)
             for key in body.model_fields_set:
                 setattr(customer, key, getattr(body, key))
             rule.name, rule.query = customer.name, queries(customer)
@@ -667,7 +854,7 @@ def update_customer(customer_id: str, body: CustomerInput):
 
 
 @app.get("/api/v1/customer-signals")
-def customer_signals(customer_id: str | None = None, offset: int = Query(0, ge=0), current=Depends(role)):
+def customer_signals(customer_id: str | None = None, offset: int = Query(0, ge=0), current=Depends(auth.screen)):
     from scout.customers import signal_window
     with Session() as db:
         query = select(CustomerSignal, Customer, Document).join(Customer, Customer.id == CustomerSignal.customer_id).join(Document, Document.id == CustomerSignal.document_id).where(*signal_window())
@@ -681,7 +868,7 @@ def customer_signals(customer_id: str | None = None, offset: int = Query(0, ge=0
             for s, c, d in rows]}
 
 
-@app.get("/api/v1/customer-signals/{signal_id}", dependencies=[Depends(admin)])
+@app.get("/api/v1/customer-signals/{signal_id}", dependencies=[Depends(auth.current_user)])
 def customer_signal_detail(signal_id: str):
     with Session() as db:
         signal = db.get(CustomerSignal, signal_id)
@@ -690,7 +877,7 @@ def customer_signal_detail(signal_id: str):
         return {**record(signal), "evidence": record(db.get(Document, signal.document_id))}
 
 
-@app.post("/api/v1/xiaohongshu/login/status", dependencies=[Depends(admin)])
+@app.post("/api/v1/xiaohongshu/login/status", dependencies=[Depends(auth.require_admin)])
 def xhs_login_status():
     from scout.providers import ProviderError
     from scout.xiaohongshu import login_status
@@ -712,7 +899,7 @@ def xhs_login_status():
     return result
 
 
-@app.post("/api/v1/xiaohongshu/login/qrcode", dependencies=[Depends(admin)])
+@app.post("/api/v1/xiaohongshu/login/qrcode", dependencies=[Depends(auth.require_admin)])
 def xhs_login_qrcode():
     from scout.providers import ProviderError
     from scout.xiaohongshu import login_qrcode
@@ -722,7 +909,7 @@ def xhs_login_qrcode():
         raise HTTPException(503, exc.code) from None
 
 
-@app.get("/api/v1/xiaohongshu", dependencies=[Depends(admin)])
+@app.get("/api/v1/xiaohongshu", dependencies=[Depends(auth.require_admin)])
 def xhs_overview():
     with Session() as db:
         rows = db.scalars(select(Rule).where(Rule.provider == "xiaohongshu").order_by(Rule.created_at)).all()
@@ -731,7 +918,7 @@ def xhs_overview():
                 "collectors": [c for c in collector_status(db, False, "admin") if c["id"] in ids]}
 
 
-@app.get("/api/v1/dingtalk/groups", dependencies=[Depends(admin)])
+@app.get("/api/v1/dingtalk/groups", dependencies=[Depends(auth.require_admin)])
 def discovered_groups():
     from scout.models import DingTalkGroup
     with Session() as db:

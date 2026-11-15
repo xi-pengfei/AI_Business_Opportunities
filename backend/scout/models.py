@@ -30,6 +30,7 @@ class Rule(Base):
     name: Mapped[str] = mapped_column(String(120))
     source_type: Mapped[str] = mapped_column(String(30), default="public_tender", server_default="public_tender")
     customer_id: Mapped[str | None] = mapped_column(ForeignKey("customers.id"), unique=True)
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     query: Mapped[str] = mapped_column(Text)
     search_spec: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     provider: Mapped[str] = mapped_column(String(30), default="tavily")
@@ -220,3 +221,43 @@ class ConsoleToken(Base):
     purpose: Mapped[str] = mapped_column(String(30), primary_key=True)
     token: Mapped[str] = mapped_column(String(120))
     rotated_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class User(Base):
+    """本机账号：密码登录 + 外部身份挂载（钉钉/飞书/企微），无渠道特权。"""
+
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(256))
+    display_name: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    role: Mapped[str] = mapped_column(String(16), default="member", server_default="member")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class UserIdentity(Base):
+    """一个账号可绑定多个外部渠道；三家同权重，登录方式与身份挂载都走这里。"""
+
+    __tablename__ = "user_identities"
+    __table_args__ = (UniqueConstraint("provider", "open_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    open_id: Mapped[str] = mapped_column(String(128))
+    union_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    bound_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class ApiKey(Base):
+    """个人级 API 密钥（ska_ 前缀明文只显示一次），替代旧的全局 ADMIN_TOKEN 供脚本使用。"""
+
+    __tablename__ = "api_keys"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    prefix: Mapped[str] = mapped_column(String(12))
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    last_used_at: Mapped[float | None] = mapped_column(Float, nullable=True)

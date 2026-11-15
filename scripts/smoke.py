@@ -8,9 +8,20 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 config = dict(line.split('=', 1) for line in (root / '.env').read_text().splitlines() if '=' in line)
 base = 'http://127.0.0.1:58100/api/v1'
+_token = None
 
 def api(path, body=None, key=None):
-    headers = {'Authorization': 'Bearer ' + config['ADMIN_TOKEN']}
+    global _token
+    if _token is None:
+        credentials = json.dumps({
+            'username': config.get('ADMIN_USERNAME', 'admin'),
+            'password': config['ADMIN_PASSWORD'],
+        }).encode()
+        request = urllib.request.Request(base + '/auth/login', data=credentials,
+            headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            _token = json.load(response)['access_token']
+    headers = {'Authorization': 'Bearer ' + _token}
     if body is not None:
         headers['Content-Type'] = 'application/json'
     if key:

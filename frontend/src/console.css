@@ -597,6 +597,12 @@ button.console-side-foot:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 他人创建的词条：读起来是正文而非可点链接 */
+.workspace .rule-table.fit .cell-link:disabled {
+  color: var(--ink);
+  font-weight: 500;
+  cursor: default;
+}
 .workspace .rule-table.fit .chip-row {
   overflow: hidden;
 }
@@ -1545,4 +1551,81 @@ button.console-side-foot:hover {
   .kpis {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== 账号中心（TokenPanel 改造）与用户管理 ===== */
+.token-section {
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.token-section:first-child { border-top: 0; padding-top: 0; }
+.token-section h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.token-section label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--ink-2); }
+.token-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font: inherit;
+  background: var(--surface);
+  color: var(--ink);
+}
+.key-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.key-row code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.key-name { color: var(--ink); font-weight: 550; }
+.key-used { flex: 1; color: var(--ink-3); font-size: 11.5px; text-align: right; }
+.screen-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.token-section .actions { display: flex; gap: 8px; }
+.top-user {
+  align-self: center;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 550;
+  padding: 0 4px;
+}
+.user-create {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+}
+.user-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.user-create input, .user-create select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  background: var(--surface);
+  color: var(--ink);
+  min-width: 180px;
+}
+.reset-row { display: inline-flex; gap: 6px; align-items: center; }
+.reset-row input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+  width: 150px;
+  background: var(--surface);
+  color: var(--ink);
 }
