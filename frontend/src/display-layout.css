@@ -9,15 +9,60 @@ body {background:var(--bg);color:var(--ink);}
 .screen h1,.workspace h1 {font-weight:600;letter-spacing:0;font-size:clamp(1.3rem,1rem + .4vw,1.7rem);}
 .screen h2 {font-weight:500;font-size:14px;line-height:1.5;}
 .screen small,.screen .notice {font-family:inherit;font-variant-numeric:tabular-nums;}
-.screen .charts {display:grid;grid-template-columns:1fr 1.15fr 1.15fr 1.5fr;gap:var(--gap);margin:0 0 var(--gap);}
-.screen .charts > section {grid-column:auto;min-width:0;display:flex;flex-direction:column;padding:14px;}
-.screen .chart-panel .plot,.screen .chart-panel:nth-child(2) .plot {height:190px;min-height:0;width:100%;}
-.screen .chart-panel .plot-wrap {flex:1;min-height:0;}
+/* —— 指标条 —— */
+.screen .kpi-strip {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap);margin:0 0 var(--gap);}
+.screen .kpi-card {display:flex;flex-direction:column;gap:3px;padding:12px 16px;min-width:0;}
+.screen .kpi-label {font-size:12px;color:var(--ink-3);}
+.screen .kpi-value {font-size:30px;line-height:1.15;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums;}
+.screen .kpi-note {font-size:11px;color:var(--ink-3);}
+
+/* —— 图表面板通用（所有 .chart-panel 均为标题 + 撑满绘图区） —— */
+.screen .chart-panel {display:flex;flex-direction:column;min-width:0;min-height:0;padding:12px;}
 .screen .chart-panel h2 {flex:none;margin:0 0 10px;}
+.screen .chart-panel .plot-wrap {flex:1;min-height:0;position:relative;}
+.screen .chart-empty {position:absolute;left:0;right:0;top:40%;text-align:center;color:var(--ink-3);font-size:12px;}
+
+/* —— 行布局：信息来源(2/3)+信息库(1/3) —— */
+.screen .workfield {display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:var(--gap);height:460px;min-height:0;margin:0 0 var(--gap);position:relative;}
+.screen .workfield > .panel {min-width:0;min-height:0;overflow:hidden;}
+
+/* —— 信息流向(1/3)+商机跟进(2/3) —— */
+.screen .flow-followup {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:var(--gap);height:240px;min-height:0;margin:0 0 var(--gap);}
+.screen .flow-followup > .panel {display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;}
+.screen .flow-followup h2 {margin:0 0 8px;flex:none;}
+
+/* —— 来源分布+监控动态 / 搜索命中率+商机地图 —— */
+.screen .charts-duo {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap);height:260px;min-height:0;margin:0 0 var(--gap);}
+.screen .charts-duo.duo-hitmap {grid-template-columns:minmax(0,2fr) minmax(0,1fr);}
+.screen .charts-duo > .panel {min-width:0;min-height:0;overflow:hidden;}
+.screen .map-scatter {position:relative;flex:1;min-height:0;}
+.screen .map-scatter .plot {height:100%;}
+
+/* —— 采集监控 + 终端信息流 —— */
+.screen .monitor-row {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap);height:300px;min-height:0;margin:0 0 var(--gap);}
+.screen .monitor-cell {display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;padding:12px;}
+.screen .monitor-cell h2 {flex:none;margin:0 0 8px;}
+.screen .monitor-cell .monitor-body,.screen .monitor-cell .collector-monitor {flex:1;min-height:0;margin:0;}
+.screen .monitor-cell .collector-monitor {grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) minmax(0,1.05fr);height:100%;}
+.screen .monitor-cell .collector-monitor > section {display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.screen .monitor-cell .collector-monitor > section + section {border-left:0;border-top:1px solid #293047;}
+.screen .monitor-cell .cm-heat-scroll,.screen .monitor-cell .cm-table-scroll {height:auto;flex:1;min-height:0;}
+.screen .terminal-stream {display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;padding:12px;}
+.screen .terminal-stream h2 {margin:0 0 8px;flex:none;}
+.screen .stream-cmd {flex:none;font:12px/1.6 ui-monospace,SFMono-Regular,monospace;color:var(--accent-soft);background:var(--void);border:1px solid var(--line);border-radius:4px;padding:5px 10px;margin:0 0 8px;}
+.screen .stream-prompt {color:var(--accent);margin-right:6px;}
+.screen .stream-cursor {display:inline-block;width:7px;height:13px;margin-left:6px;vertical-align:-2px;background:var(--accent-soft);animation:stream-blink 1.1s steps(1) infinite;}
+@keyframes stream-blink {50% {opacity:0;}}
+@media (prefers-reduced-motion: reduce) {.screen .stream-cursor {animation:none;}}
+.screen .stream-lines {flex:1;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;}
+.screen .stream-lines::-webkit-scrollbar {display:none;}
+.screen .stream-line {display:flex;gap:10px;align-items:baseline;font:12px/1.9 ui-monospace,SFMono-Regular,monospace;color:var(--ink-2);border-bottom:1px dashed var(--line);padding:2px 0;}
+.screen .stream-line time {color:var(--ink-3);flex:none;}
+.screen .stream-line span {flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.screen .stream-line code {color:var(--accent-soft);flex:none;}
 .screen .map-comparison {display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:8px;min-height:0;flex:1;}
 .province-treemap {position:relative;min-width:0;min-height:0;overflow:hidden;}
-.screen .workfield,.screen .followup-panels {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:var(--gap);}
-.screen .workfield {height:400px;min-height:0;margin:0 0 var(--gap);}
+.screen .followup-panels {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:var(--gap);}
 .screen .followup-panels {height:230px;min-height:0;margin:0;}
 .screen .followup-panels .customer-followup {grid-column:1;grid-row:1;}
 .screen .followup-panels .business-followup {grid-column:2;grid-row:1;}
@@ -67,14 +112,18 @@ body {background:var(--bg);color:var(--ink);}
 .workspace nav button {color:var(--ink-2);background:transparent;}
 .workspace nav button.active {background:var(--accent-tint);color:var(--accent);}
 [hidden] {display:none!important;}
-:fullscreen .screen.is-fullscreen {height:100dvh;min-height:0;padding:clamp(12px,1vw,24px);display:grid;grid-template-rows:auto minmax(150px,25fr) auto minmax(180px,44fr) minmax(130px,25fr) auto;gap:12px;overflow:hidden;}
-:fullscreen .screen.is-fullscreen > .mast,:fullscreen .screen.is-fullscreen > .charts,:fullscreen .screen.is-fullscreen > .collector-strip,:fullscreen .screen.is-fullscreen > .workfield,:fullscreen .screen.is-fullscreen > .followup-panels,:fullscreen .screen.is-fullscreen > .notice {margin:0;height:auto;min-height:0;}
-:fullscreen .screen .chart-panel .plot,:fullscreen .screen .chart-panel:nth-child(2) .plot {height:100%;min-height:0;flex:1;}
-
-:fullscreen .screen .notice {justify-self:end;align-self:end;}
+:fullscreen .screen.is-fullscreen {height:100dvh;min-height:0;padding:clamp(12px,1vw,24px);display:grid;gap:12px;overflow:hidden;grid-template-rows:auto auto minmax(150px,17fr) minmax(120px,12fr) minmax(120px,13fr) minmax(120px,13fr) minmax(140px,14fr) auto;grid-template-areas:'mast' 'kpi' 'workfield' 'flowfollowup' 'duoEven' 'duoHit' 'monitorRow' 'notice';}
+:fullscreen .screen.is-fullscreen > .mast {grid-area:mast;}
+:fullscreen .screen.is-fullscreen > .kpi-strip {grid-area:kpi;}
+:fullscreen .screen.is-fullscreen > .workfield {grid-area:workfield;height:auto;}
+:fullscreen .screen.is-fullscreen > .flow-followup {grid-area:flowfollowup;height:auto;}
+:fullscreen .screen.is-fullscreen > .charts-duo {grid-area:duoEven;height:auto;}
+:fullscreen .screen.is-fullscreen > .monitor-row {grid-area:monitorRow;height:auto;}
+:fullscreen .screen.is-fullscreen > .notice {grid-area:notice;justify-self:end;align-self:end;}
+:fullscreen .screen.is-fullscreen > .error,:fullscreen .screen.is-fullscreen > .success {position:fixed;top:60px;right:20px;max-width:480px;z-index:40;}
 @media(min-width:1800px){.screen th,.screen td{font-size:13px;}.screen h2{font-size:16px;}.screen .province-row{font-size:12px;}}
-@media(max-width:1100px){.screen .charts{grid-template-columns:1fr 1fr;}.screen .workfield,.screen .followup-panels{grid-template-columns:minmax(0,1fr) minmax(0,2fr);}.screen .information-flow-table.fragment-table th:nth-child(4){width:28%!important;}}
-@media(max-width:750px){.screen .workfield,.screen .followup-panels{height:auto;grid-template-columns:1fr;}.screen .terminal,.screen .library{height:360px;}.screen .followup-panels > .panel{height:220px;grid-column:1!important;grid-row:auto!important;}.screen .charts{grid-template-columns:1fr;}:fullscreen .screen.is-fullscreen{display:block;overflow:auto;}.screen .charts .plot{height:190px!important;}}
+@media(max-width:1100px){.screen .kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr));}.screen .workfield{grid-template-columns:minmax(0,2fr) minmax(0,1fr);}.screen .flow-followup{grid-template-columns:minmax(0,1fr) minmax(0,2fr);}.screen .information-flow-table.fragment-table th:nth-child(4){width:28%!important;}}
+@media(max-width:750px){.screen .kpi-strip,.screen .workfield,.screen .flow-followup,.screen .charts-duo,.screen .charts-duo.duo-hitmap,.screen .monitor-row{grid-template-columns:1fr;height:auto;}.screen .terminal,.screen .library{height:360px;}.screen .terminal-stream{height:240px;}:fullscreen .screen.is-fullscreen{display:block;overflow:auto;}.screen .charts-duo .plot{height:190px!important;}}
 button {background:var(--surface);color:var(--ink);border-color:var(--line-strong);}
 button:hover {background:var(--surface-2);}
 a {color:var(--accent);}
@@ -89,18 +138,10 @@ input,textarea,select {background:var(--surface);color:var(--ink);border-color:v
 .screen .followup-panels .panel .table-scroll {max-height:100%;}
 .screen .empty {color:var(--ink-3);}
 .screen .fragment-tags .fragment-tag {background:var(--surface-2);color:var(--ink-2);border-color:var(--line);}
-:fullscreen .screen .charts > .chart-panel {min-height:0;overflow:hidden;}
 :fullscreen .screen .chart-panel > .plot {height:0!important;flex:1 1 0;}
 :fullscreen .screen .chart-panel > .plot-wrap {height:0;flex:1 1 0;overflow:hidden;}
-:fullscreen .screen .map-comparison {height:0;overflow:hidden;}
-.screen .collector-strip strong {color:var(--accent);}
-:fullscreen .screen.is-fullscreen {grid-template-areas:'mast' 'charts' 'collector' 'workfield' 'followup' 'notice';}
-:fullscreen .screen > .mast {grid-area:mast;}
-:fullscreen .screen > .charts {grid-area:charts;}
-:fullscreen .screen > .collector-strip {grid-area:collector;}
-:fullscreen .screen > .workfield {grid-area:workfield;}
-:fullscreen .screen > .followup-panels {grid-area:followup;}
-:fullscreen .screen > .notice {grid-area:notice;}
+:fullscreen .screen .map-scatter {height:0;flex:1 1 0;overflow:hidden;}
+:fullscreen .screen.is-fullscreen > .charts-duo.duo-hitmap {grid-area:duoHit;}
 :fullscreen .screen > .error,:fullscreen .screen > .success {position:fixed;top:60px;right:20px;max-width:480px;z-index:40;}
 :fullscreen .screen > .chart-records,:fullscreen .screen > .detail {position:fixed;inset:70px 24px 24px;overflow:auto;z-index:30;}
 html {background:var(--bg);color:var(--ink);}
