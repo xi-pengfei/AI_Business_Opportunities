@@ -207,3 +207,57 @@
 .screen .collector-monitor .cm-table-scroll {
   height: 156px;
 }
+
+/* ---------- 表格压缩（最终密度）：不换行、超长省略、行高收窄 ----------
+   覆盖上方双规范：所有表格单元格单行显示，超长截断为省略号；
+   行高压到 24px，状态胶囊同步缩小。 */
+.screen .library td,
+.screen .followup-panels td,
+.screen .collector-monitor td,
+.screen .collector-monitor th,
+.screen .information-flow-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.screen .library th,
+.screen .followup-panels th,
+.screen .information-flow-table th {
+  white-space: nowrap;
+}
+.screen .library td .text-button,
+.screen .followup-panels td .text-button {
+  min-height: 20px;
+  padding: 0;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.screen .library .fragment-tag,
+.screen .followup-panels .fragment-tag {
+  min-height: 20px;
+  padding: 0 6px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.screen .collector-monitor th,
+.screen .collector-monitor td {
+  height: 24px;
+}
+.screen .collector-monitor thead th {
+  height: 24px;
+}
+.screen .collector-monitor td[class*="cm-state-"] {
+  height: 20px;
+  margin: 0;
+  padding: 0 6px;
+}
+.screen .collector-monitor .cm-table-scroll {
+  height: 120px;
+}
