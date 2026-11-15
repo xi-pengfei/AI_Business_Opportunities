@@ -12,6 +12,7 @@ import { Xiaohongshu } from "./Xiaohongshu";
 import { FollowupPanels } from "./FollowupPanels";
 import { NetworkRules } from "./NetworkRules";
 import { Customers } from "./Customers";
+import { TokenPanel, KeyIcon } from "./TokenPanel";
 import { Spider } from "./Spider";
 import { clock, fullTime, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
@@ -42,6 +43,7 @@ function App() {
     [busy, setBusy] = useState(false),
     [connected, setConnected] = useState(false);
   const [informationStatus, setInformationStatus] = useState("active");
+  const [tokenOpen, setTokenOpen] = useState(false);
   const [detail, setDetail] = useState<
     (Item & { evidence: { raw_content: string; content_kind: string } }) | null
   >(null);
@@ -518,13 +520,13 @@ function App() {
                 </button>
               ))}
             </nav>
-            <div className="console-side-foot">
-              <span className="console-avatar" aria-hidden="true">AI</span>
+            <button type="button" className="console-side-foot" onClick={() => setTokenOpen(true)} aria-haspopup="dialog">
+              <span className="console-avatar" aria-hidden="true"><KeyIcon/></span>
               <div>
-                <b>管理员</b>
-                <small>本机控制台</small>
+                <b>本机令牌</b>
+                <small>管理员权限 · 单用户</small>
               </div>
-            </div>
+            </button>
           </aside>
           <div className="console-main">
             <header className="mast console-top">
@@ -534,10 +536,6 @@ function App() {
                 <b>{crumb[1]}</b>
               </div>
               <div className="toolbar">
-                <span className={"console-live" + (connected ? "" : " is-down")}>
-                  <i className="console-pulse" aria-hidden="true" />
-                  {connected ? `采集中 ${liveTasks}` : "连接等待中"}
-                </span>
                 <button onClick={() => navigate("display")}>展示大屏</button>
                 <button
                   onClick={() => {
@@ -568,7 +566,7 @@ function App() {
               {!data && <div className="empty">正在读取运行状态…</div>}
               {page === "xiaohongshu" && <Xiaohongshu request={request} />}
               {page === "customers" && <Customers request={request} manage />}
-              {page === "rules" && <NetworkRules rules={rules} request={request} onSaved={refresh} />}
+              {page === "rules" && <NetworkRules rules={rules} request={request} onSaved={refresh} liveTasks={liveTasks} />}
               {page === "tasks" && (
                 <section className="panel">
                   <h2>
@@ -679,6 +677,15 @@ function App() {
               {data && ` · 最后更新 ${fullTime(data.server_time)}`}
             </div>
           </div>
+          <TokenPanel
+            open={tokenOpen}
+            request={request}
+            onClose={() => setTokenOpen(false)}
+            onRotated={(t) => {
+              setToken(t);
+              setMessage("令牌已更新，本会话已自动改用新令牌。");
+            }}
+          />
         </>
       )}
     </main>

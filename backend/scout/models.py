@@ -39,6 +39,7 @@ class Rule(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     next_run_at: Mapped[float] = mapped_column(Float, default=time.time, index=True)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    started_at: Mapped[float | None] = mapped_column(Float)
 
 
 class Task(Base):
@@ -211,3 +212,11 @@ class DingTalkGroup(Base):
     title: Mapped[str] = mapped_column(String(200))
     robot_code: Mapped[str] = mapped_column(String(120))
     requested_at: Mapped[float] = mapped_column(Float)
+
+
+class ConsoleToken(Base):
+    """Rotated access tokens; overrides .env values while a row exists."""
+    __tablename__ = "console_tokens"
+    purpose: Mapped[str] = mapped_column(String(30), primary_key=True)
+    token: Mapped[str] = mapped_column(String(120))
+    rotated_at: Mapped[float] = mapped_column(Float, default=time.time)

@@ -164,6 +164,35 @@ body {
   display: flex;
   align-items: center;
   gap: 9px;
+  width: 100%;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+button.console-side-foot:hover {
+  background: var(--surface-2);
+}
+.console-side-foot .console-avatar svg {
+  width: 15px;
+  height: 15px;
+}
+.console-side-foot::after {
+  content: "";
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  background: currentColor;
+  opacity: 0.4;
+  clip-path: polygon(3px 0, 8px 5px, 3px 10px);
+  transform: rotate(90deg);
 }
 .console-avatar {
   width: 28px;
@@ -410,7 +439,7 @@ body {
 /* ================= KPI 指标带 ================= */
 .kpis {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -503,6 +532,108 @@ body {
 .rule-table th {
   text-align: left;
 }
+/* 业务名称做成链接：既是查看，也是修改入口 */
+.workspace .cell-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 550;
+  color: var(--accent);
+  text-align: left;
+  cursor: pointer;
+  text-underline-offset: 3px;
+}
+.workspace .cell-link:hover {
+  text-decoration: underline;
+}
+.workspace .cell-link:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+/* 启停用颜色区分：开始=绿，停止=红 */
+.workspace .btn-start {
+  background: var(--ok-tint);
+  border-color: transparent;
+  color: #0b7a58;
+  box-shadow: none;
+}
+.workspace .btn-start:hover {
+  background: #d5f0e4;
+  border-color: transparent;
+}
+.workspace .btn-stop {
+  background: var(--err-tint);
+  border-color: transparent;
+  color: var(--err-bright);
+  box-shadow: none;
+}
+.workspace .btn-stop:hover {
+  background: #fbdcdc;
+  border-color: transparent;
+}
+.workspace .num-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.workspace .idx-cell {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.3px;
+}
+/* 自适应表格：横向不出滚动条，溢出一律省略号 */
+.workspace .rule-table.fit {
+  table-layout: fixed;
+  width: 100%;
+}
+.workspace .rule-table.fit td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace .rule-table.fit .cell-link {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace .rule-table.fit .chip-row {
+  overflow: hidden;
+}
+/* 同义词溢出时，只让第一个 chip 自身省略，避免出现「半个字」 */
+.workspace .rule-table.fit .chip-row .chip {
+  flex: none;
+}
+.workspace .rule-table.fit .chip-row .chip:first-child {
+  display: inline-block;
+  line-height: 21px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace .rule-table.fit .actions {
+  flex-wrap: nowrap;
+}
+/* 状态 chip 在表内收紧，保证任何宽度都完整显示，不被省略号吃掉 */
+.workspace .rule-table.fit td .st {
+  flex: none;
+  padding: 0 7px;
+  gap: 5px;
+  font-size: 11px;
+}
+.workspace .num-cell small {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+/* KPI 数字配色：信息采集=蓝 / 采集中=绿 / 已停止=琥珀 */
+.workspace .kpi-v.c-blue { color: var(--accent); }
+.workspace .kpi-v.c-green { color: var(--ok); }
+.workspace .kpi-v.c-amber { color: var(--warn); }
+.workspace .rule-table .actions .btn-start,
+.workspace .rule-table .actions .btn-stop {
+  min-width: 70px;
+}
 .cell-main {
   display: flex;
   flex-direction: column;
@@ -532,6 +663,10 @@ body {
   gap: 4px;
   align-items: center;
   flex-wrap: wrap;
+}
+/* 表格内 chips 不折行，保证行高统一（分页按固定行高计算） */
+.workspace .rule-table .chip-row {
+  flex-wrap: nowrap;
 }
 .chip {
   display: inline-flex;
@@ -780,7 +915,7 @@ body {
   animation-timeline: scroll(self inline);
 }
 @media (max-width: 1180px) {
-  .workspace .table-card > .table-scroll {
+  .workspace .table-card > .table-scroll:not(.no-fade) {
     -webkit-mask-image: linear-gradient(
       to right,
       #000 calc(100% - 40px),
@@ -798,7 +933,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   /* 不用滚动动画时，保留一条更窄更淡的静态提示，避免糊住最后一列 */
   .workspace .library .table-scroll,
-  .workspace .table-card > .table-scroll {
+  .workspace .table-card > .table-scroll:not(.no-fade) {
     animation: none;
     -webkit-mask-image: linear-gradient(
       to right,
@@ -1026,6 +1161,77 @@ body {
   border-left-color: var(--ok);
   background: var(--ok-tint);
   color: #077354;
+}
+
+/* ================= 本机令牌面板 ================= */
+.token-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.token-row code {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  overflow-wrap: anywhere;
+  align-self: center;
+}
+.token-masked {
+  letter-spacing: 2px;
+  color: var(--ink-2);
+}
+.token-value {
+  color: var(--ink);
+}
+.token-confirm {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--err-tint);
+  border-left: 3px solid var(--err);
+  font-size: 12.6px;
+  line-height: 1.7;
+}
+.token-confirm p {
+  margin: 0 0 6px;
+}
+.token-confirm .actions {
+  margin-top: 10px;
+}
+.token-created {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--ok-tint);
+  border-left: 3px solid var(--ok);
+  font-size: 12.6px;
+  line-height: 1.7;
+}
+.token-created p {
+  margin: 0 0 8px;
+}
+.token-created .token-row {
+  margin-bottom: 10px;
+}
+.token-other {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.token-other h3 {
+  margin: 0 0 8px;
+  font-size: 12.6px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.token-other h3 .opt {
+  font-weight: 400;
 }
 
 /* ================= 抽屉（新建 / 修改商机主题） ================= */
@@ -1280,11 +1486,33 @@ body {
 }
 @media (max-width: 1180px) {
   .kpis {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   }
-  /* 窄屏不挤压换行，交给横向滚动 */
-  .rule-table {
+  /* 窄屏不挤压换行，交给横向滚动（自适应表格 fit 除外） */
+  .rule-table:not(.fit) {
     min-width: 760px;
+  }
+}
+/* 极窄屏：单元格内边距与操作按钮一起收紧，保证按钮文字不被切 */
+@media (max-width: 1120px) {
+  .workspace .rule-table.fit th,
+  .workspace .rule-table.fit td {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .workspace .rule-table.fit th:first-child,
+  .workspace .rule-table.fit td:first-child {
+    padding-left: 12px;
+  }
+  .workspace .rule-table.fit th:last-child,
+  .workspace .rule-table.fit td:last-child {
+    padding-right: 10px;
+  }
+  .workspace .rule-table.fit .actions .btn-start,
+  .workspace .rule-table.fit .actions .btn-stop {
+    min-width: 0;
+    padding: 0 6px;
+    font-size: 11px;
   }
 }
 @media (max-width: 980px) {
@@ -1309,7 +1537,7 @@ body {
     padding: 0 16px;
   }
   .kpis {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 10px;
   }
 }

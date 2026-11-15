@@ -3,20 +3,55 @@ import type {Rule} from './types';
 
 type Draft={id?:string;name:string;synonyms:string;actions:string;regions:string;enabled:boolean};
 type Review={product:string;synonyms:string[];actions:string[];regions:string[];queries:string[];notes:string[];model:string};
+type Stats={id:string;created_at:number;started_at:number|null;searches:number;succeeded:number;items:number;items_total:number};
 const empty:Draft={name:'',synonyms:'',actions:'采购公告\n招标公告\n采购意向',regions:'',enabled:false};
 
 const PlusIcon=()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 5v14M5 12h14"/></svg>;
 
-function freq(seconds:number){return seconds>=3600?`每 ${Math.round(seconds/3600)} 小时`:seconds>0?`每 ${Math.round(seconds/60)} 分钟`:'手动触发';}
+const stamp=(t?:number)=>t?new Date(t*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'—';
+function span(seconds:number){
+  if(seconds<3600)return `${Math.max(1,Math.round(seconds/60))} 分钟`;
+  if(seconds<86400)return `${(seconds/3600).toFixed(1)} 小时`;
+  return `${Math.floor(seconds/86400)} 天`;
+}
 
-export function NetworkRules({rules,request,onSaved}:{rules:Rule[];request:(path:string,options?:RequestInit)=>Promise<any>;onSaved:()=>Promise<void>}) {
+export function NetworkRules({rules,request,onSaved,liveTasks=0}:{rules:Rule[];request:(path:string,options?:RequestInit)=>Promise<any>;onSaved:()=>Promise<void>;liveTasks?:number}) {
   const [draft,setDraft]=useState<Draft>(empty),[checked,setChecked]=useState<Review|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
   const [open,setOpen]=useState(false);
+  const [stats,setStats]=useState<Record<string,Stats>>({});
+  const [page,setPage]=useState(1);
+  const [pageSize,setPageSize]=useState(10);
   const form=useRef<HTMLFormElement>(null);
   const heading=useRef<HTMLHeadingElement>(null);
+  const card=useRef<HTMLDivElement>(null);
   const rows=rules.filter(r=>r.provider!=='demo'&&r.provider!=='xiaohongshu'&&!r.search_spec?.retired);
   const running=rows.filter(r=>r.enabled).length;
+  const collected=rows.reduce((sum,r)=>sum+(stats[r.id]?.items||0),0);
+  useEffect(()=>{
+    let alive=true;
+    request('/network-rules/stats').then((list:Stats[])=>{
+      if(!alive||!Array.isArray(list))return;
+      setStats(Object.fromEntries(list.map(s=>[s.id,s])));
+    }).catch(()=>{});
+    return()=>{alive=false;};
+  },[rules]);
+  // 每页条数跟随视口高度：按表格实际起点算可用高度，保证整页不出现纵向滚动条
+  useEffect(()=>{
+    const calc=()=>{
+      const top=card.current?.getBoundingClientRect().top;
+      if(!top)return;
+      setPageSize(Math.max(4,Math.floor((window.innerHeight-top-194)/47)));
+    };
+    calc();
+    addEventListener('resize',calc);
+    const observer=new ResizeObserver(calc);
+    if(card.current)observer.observe(card.current);
+    return()=>{removeEventListener('resize',calc);observer.disconnect();};
+  },[]);
+  const pages=Math.max(1,Math.ceil(rows.length/pageSize));
+  const current=Math.min(page,pages);
+  const pageRows=rows.slice((current-1)*pageSize,current*pageSize);
   function focus(){requestAnimationFrame(()=>{heading.current?.focus();});}
   function fromRule(r:Rule):Draft{return {id:r.id,name:r.search_spec?.product||r.name,synonyms:(r.search_spec?.synonyms||[]).join("\n"),actions:(r.search_spec?.actions||["采购公告","招标公告","采购意向"]).join("\n"),regions:(r.search_spec?.regions||[]).join(" "),enabled:r.enabled};}
   function newRule(){setDraft(empty);setChecked(null);setError('');setMessage('');setOpen(true);focus();}
@@ -59,47 +94,67 @@ export function NetworkRules({rules,request,onSaved}:{rules:Rule[];request:(path
     </div>
 
     <div className="kpis">
-      <div className="kpi"><div className="kpi-l">商机主题</div><div className="kpi-v num">{rows.length}<small>个</small></div><div className="kpi-d">{running} 个运行中 · {rows.length-running} 个停止</div></div>
-      <div className="kpi"><div className="kpi-l">持续采集</div><div className="kpi-v num">{running}<small>个</small></div><div className="kpi-d"><span className="chip brand">按各自频率自动运行</span></div></div>
-      <div className="kpi"><div className="kpi-l">搜索服务</div><div className="kpi-v">SearXNG<small>开源搜索</small></div><div className="kpi-d">全部主题共用同一入口</div></div>
+      <div className="kpi"><div className="kpi-l">业务名称</div><div className="kpi-v num">{rows.length}<small>个</small></div><div className="kpi-d">累计创建的采集主题</div></div>
+      <div className="kpi"><div className="kpi-l">信息采集</div><div className="kpi-v num c-blue">{collected}<small>条</small></div><div className="kpi-d">累计有效条数</div></div>
+      <div className="kpi"><div className="kpi-l">运行中</div><div className="kpi-v num c-green">{running}<small>个</small></div><div className="kpi-d">{liveTasks>0?`正在执行任务 ${liveTasks} 个`:'等待执行新任务'}</div></div>
+      <div className="kpi"><div className="kpi-l">已停止</div><div className="kpi-v num c-amber">{rows.length-running}<small>个</small></div><div className="kpi-d">停止后不再自动采集</div></div>
     </div>
 
-    <div className="table-card">
-      <div className="table-scroll">
-        <table className="rule-table">
+    <div className="table-card" ref={card}>
+      <div className="table-scroll no-fade">
+        <table className="rule-table fit">
           <thead>
             <tr>
-              <th style={{minWidth:240}}>商机 / 产品</th>
-              <th style={{minWidth:260}}>行为词</th>
-              <th>地区</th>
-              <th>状态</th>
-              <th>采集频率</th>
-              <th style={{width:150}}>操作</th>
+              <th style={{width:'5%'}}>序号</th>
+              <th style={{width:'18%'}}>业务名称</th>
+              <th style={{width:'15%'}}>同义词</th>
+              <th style={{width:'7%'}}>地区</th>
+              <th style={{width:'11%'}}>状态</th>
+              <th style={{width:'10%'}}>创建时间</th>
+              <th style={{width:'9%'}}>已运行</th>
+              <th style={{width:'8%'}}>采集条数</th>
+              <th style={{width:'6%'}}>成功率</th>
+              <th style={{width:'11%'}}>操作</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(r=>{
-              const acts=r.search_spec?.actions||[];
+            {pageRows.map((r,i)=>{
               const syn=r.search_spec?.synonyms||[];
+              const region=(r.search_spec?.regions||[]).join('、')||'全国';
+              const s=stats[r.id];
+              const rate=s&&s.items_total>0?Math.round(s.items/s.items_total*100):null;
+              const startedAt=s?.started_at||s?.created_at||null;
+              const uptime=r.enabled&&startedAt?Date.now()/1000-startedAt:null;
               return <tr key={r.id}>
-                <td><div className="cell-main">
-                  <div className="cell-name">{r.search_spec?.product||r.name}</div>
-                  <div className="cell-meta">同义词 {syn.length} 个<span className="sep">·</span>{r.search_spec?.regions?.length||0} 个地区</div>
-                </div></td>
-                <td><div className="chip-row">{acts.slice(0,2).map(a=><span className="chip" key={a}>{a}</span>)}{acts.length>2&&<span className="chip">+{acts.length-2}</span>}{!acts.length&&<span className="muted">待配置</span>}</div></td>
-                <td>{r.search_spec?.regions?.join('、')||'全国'}</td>
+                <td className="idx-cell">{(current-1)*pageSize+i+1}</td>
+                <td><button type="button" className="cell-link" disabled={busy} onClick={()=>edit(r)} title="打开并修改这个业务名称">{r.search_spec?.product||r.name}</button></td>
+                <td title={syn.length?syn.join('、'):'暂无同义词'}><div className="chip-row">{syn.length>0&&<span className="chip">{syn[0]}</span>}{syn.length>1&&<span className="chip">+{syn.length-1}</span>}{!syn.length&&<span className="muted">无</span>}</div></td>
+                <td title={region}>{region}</td>
                 <td><span className={'st '+(r.enabled?'st-on':'st-off')}>{r.enabled?'运行中':'已停止'}</span></td>
-                <td className="muted">{freq(r.interval_seconds)}</td>
+                <td className="muted" title={s?.created_at?new Date(s.created_at*1000).toLocaleString('zh-CN',{hour12:false}):''}>{stamp(s?.created_at)}</td>
+                <td className="muted" title={uptime!=null?`已运行 ${span(uptime)}`:'尚未开始采集'}>{uptime!=null?span(uptime):'—'}</td>
+                <td className="num-cell" title={s?`有效 ${s.items} / 采集 ${s.items_total} 条`:'暂无采集'}>
+                  {s?s.items:'—'}
+                </td>
+                <td className="num-cell" title="有效条数 ÷ 采集到的总条数">{rate!=null?`${rate}%`:'—'}</td>
                 <td><div className="actions">
-                  <button className="btn btn-sm" disabled={busy} onClick={()=>edit(r)}>修改</button>
-                  <button className="btn btn-sm btn-quiet" disabled={busy} onClick={()=>toggle(r)}>{r.enabled?'停止':'开始采集'}</button>
+                  {r.enabled
+                    ? <button className="btn btn-sm btn-stop" disabled={busy} onClick={()=>toggle(r)}>停止</button>
+                    : <button className="btn btn-sm btn-start" disabled={busy} onClick={()=>toggle(r)}>开始采集</button>}
                 </div></td>
               </tr>;
             })}
           </tbody>
         </table>
       </div>
-      {!rows.length&&<div className="empty">还没有商机主题。点击右上角「新建网络商机」，填写产品名与行为词，AI 会帮你生成搜索组合。</div>}
+      {rows.length>0&&<div className="table-foot">
+        <span>共 {rows.length} 条 · 第 {current} / {pages} 页 · 每页 {pageSize} 条</span>
+        <div className="chart-pager">
+          <button className="btn btn-sm" disabled={current<=1} onClick={()=>setPage(current-1)}>上一页</button>
+          <button className="btn btn-sm" disabled={current>=pages} onClick={()=>setPage(current+1)}>下一页</button>
+        </div>
+      </div>}
+      {!rows.length&&<div className="empty">还没有业务名称。点击右上角「新建网络商机」，填写业务名称与行为词，AI 会帮你生成搜索组合。</div>}
     </div>
 
     {open&&<div className="drawer-layer">

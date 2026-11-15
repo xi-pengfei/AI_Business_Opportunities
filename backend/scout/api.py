@@ -17,6 +17,7 @@ from scout.flow_metrics import flow_facts
 from scout.information import item_record
 from scout.models import (
     Attempt,
+    ConsoleToken,
     Customer,
     CustomerSignal,
     Document,
@@ -32,9 +33,35 @@ from scout.service import emit, start_rule
 app = FastAPI(title="AI商机智能体", version="0.1.0")
 
 
+def console_token(purpose: str) -> tuple[str, str]:
+    """Effective token for a purpose plus where it comes from ("db" or "env")."""
+    with Session() as db:
+        row = db.get(ConsoleToken, purpose)
+        if row and row.token:
+            return row.token, "db"
+    return (settings().admin_token if purpose == "admin" else settings().display_token), "env"
+
+
+def rotate_console_token(purpose: str) -> str:
+    token = secrets.token_urlsafe(24)
+    with Session.begin() as db:
+        row = db.get(ConsoleToken, purpose)
+        if row:
+            row.token = token
+            row.rotated_at = time.time()
+        else:
+            db.add(ConsoleToken(purpose=purpose, token=token, rotated_at=time.time()))
+    return token
+
+
+def masked(token: str) -> str:
+    return f"••••••••{token[-4:]}" if len(token) >= 8 else "••••••••"
+
+
 def role(authorization: Annotated[str | None, Header()] = None):
     token = (authorization or "").removeprefix("Bearer ")
-    if token and settings().admin_token and secrets.compare_digest(token, settings().admin_token):
+    admin_value, _ = console_token("admin")
+    if token and admin_value and secrets.compare_digest(token, admin_value):
         return "admin"
     if (
         token
@@ -48,6 +75,36 @@ def role(authorization: Annotated[str | None, Header()] = None):
 def admin(current=Depends(role)):
     if current != "admin":
         raise HTTPException(403, "此操作需要管理员权限")
+
+
+@app.get("/api/v1/console-token", dependencies=[Depends(admin)])
+def read_console_token(reveal: bool = False):
+    token, source = console_token("admin")
+    if not token:
+        raise HTTPException(404, "尚未配置管理员令牌")
+    display_value, display_source = console_token("display")
+    payload = {
+        "masked": masked(token),
+        "source": source,
+        "display": {
+            "masked": masked(display_value) if display_value else "",
+            "source": display_source,
+            "present": bool(display_value),
+        },
+    }
+    if reveal:
+        payload["token"] = token
+        if display_value:
+            payload["display"]["token"] = display_value
+    return payload
+
+
+@app.post("/api/v1/console-token/rotate", dependencies=[Depends(admin)])
+def rotate_admin_token():
+    if not console_token("admin")[0]:
+        raise HTTPException(404, "尚未配置管理员令牌")
+    token = rotate_console_token("admin")
+    return {"token": token, "masked": masked(token), "rotated_at": time.time()}
 
 
 def record(row, exclude=()):
@@ -162,6 +219,8 @@ def save_product_rule(body, rule_id=None):
         rule.provider='searxng'
         rule.interval_seconds=0
         rule.max_results=20
+        if body.enabled and not rule.started_at:
+            rule.started_at=time.time()
         rule.enabled=body.enabled
         rule.next_run_at=time.time()
         db.flush()
@@ -176,6 +235,69 @@ def create_product_rule(body: ProductInput):
 @app.patch("/api/v1/network-rules/{rule_id}", dependencies=[Depends(admin)])
 def edit_product_rule(rule_id: str, body: ProductInput):
     return save_product_rule(body, rule_id)
+
+
+@app.get("/api/v1/network-rules/stats", dependencies=[Depends(admin)])
+def network_rule_stats():
+    """Per-rule collection footprint: batches, success rate and effective items."""
+    with Session() as db:
+        rules = db.scalars(
+            select(Rule).where(Rule.source_type == "public_tender", Rule.provider != "demo")
+        ).all()
+        ids = [r.id for r in rules]
+        searches = (
+            dict(db.execute(select(Task.rule_id, func.count()).where(Task.rule_id.in_(ids), Task.kind == "search").group_by(Task.rule_id)).all())
+            if ids
+            else {}
+        )
+        succeeded = (
+            dict(
+                db.execute(
+                    select(Task.rule_id, func.count())
+                    .where(Task.rule_id.in_(ids), Task.kind == "search", Task.status == "succeeded")
+                    .group_by(Task.rule_id)
+                ).all()
+            )
+            if ids
+            else {}
+        )
+        pairs = (
+            db.execute(
+                select(Task.rule_id, Task.result["item_id"].as_string()).where(
+                    Task.rule_id.in_(ids), Task.result["item_id"].as_string().isnot(None)
+                )
+            ).all()
+            if ids
+            else []
+        )
+        item_ids = {item_id for _, item_id in pairs if item_id}
+        quality = (
+            dict(db.execute(select(Item.id, Item.quality_status).where(Item.id.in_(item_ids))).all())
+            if item_ids
+            else {}
+        )
+        per: dict[str, dict[str, int]] = {}
+        seen: set[tuple[str, str]] = set()
+        for rule_id, item_id in pairs:
+            if not item_id or item_id not in quality or (rule_id, item_id) in seen:
+                continue
+            seen.add((rule_id, item_id))
+            bucket = per.setdefault(rule_id, {"items": 0, "items_total": 0})
+            bucket["items_total"] += 1
+            if quality[item_id] == "active":
+                bucket["items"] += 1
+        return [
+            {
+                "id": r.id,
+                "created_at": r.created_at,
+                "started_at": r.started_at,
+                "searches": searches.get(r.id, 0),
+                "succeeded": succeeded.get(r.id, 0),
+                "items": per.get(r.id, {}).get("items", 0),
+                "items_total": per.get(r.id, {}).get("items_total", 0),
+            }
+            for r in rules
+        ]
 
 
 @app.post("/api/v1/rules", status_code=201, dependencies=[Depends(admin)])
@@ -198,6 +320,8 @@ def enable_rule(rule_id: str, body: EnableInput):
         if body.provider is not None and rule.source_type != "public_tender":
             raise HTTPException(422, "平台采集请在对应平台页面修改")
         if body.enabled is not None:
+            if body.enabled and not rule.enabled:
+                rule.started_at = time.time()
             rule.enabled = body.enabled
         for field in ("name", "provider", "interval_seconds", "max_results", "query"):
             value = getattr(body, field)
