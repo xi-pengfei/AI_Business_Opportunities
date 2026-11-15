@@ -40,7 +40,7 @@ export function Users({request,me}:{request:(path:string,options?:RequestInit)=>
     <section className="panel">
       <h2>新建账号</h2>
       <form className="user-create" onSubmit={e=>{e.preventDefault();if(password.length>=8)create();}}>
-        <label>用户名 <input required minLength={2} maxLength={64} pattern="[A-Za-z0-9_.@-]+" title="字母、数字、点、下划线、连字符、@" value={username} onChange={e=>setUsername(e.target.value)}/></label>
+        <label>用户名 <input required minLength={2} maxLength={64} title="2-64 个字符，中英文均可，不能包含空格" value={username} onChange={e=>setUsername(e.target.value)}/></label>
         <label>姓名 <input maxLength={80} value={displayName} onChange={e=>setDisplayName(e.target.value)}/></label>
         <label>初始密码（至少 8 位） <input required minLength={8} type="text" autoComplete="off" value={password} onChange={e=>setPassword(e.target.value)}/></label>
         <label>角色 <select value={role} onChange={e=>setRole(e.target.value as 'admin'|'member')}><option value="member">成员</option><option value="admin">系统管理员</option></select></label>

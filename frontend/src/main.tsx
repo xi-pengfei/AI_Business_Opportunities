@@ -24,6 +24,23 @@ import "./design-tokens.css";
 import "./console.css";
 
 const base = "/api/v1";
+
+/** 把后端返回的 detail 转成可读文案（422 校验错误是数组，直接显示会变成「请求失败」）。 */
+function readableDetail(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d: any) => {
+        const msg = typeof d?.msg === "string" ? d.msg.replace(/^Value error,\s*/i, "") : "";
+        if (msg) return msg;
+        if (d?.loc) return `${String(d.loc.at(-1))}: 参数无效`;
+        return "";
+      })
+      .filter(Boolean);
+    return parts.join("；");
+  }
+  return "";
+}
 type Session = { access_token: string; user: Me };
 const savedSession: Session | null = (() => {
   try {
@@ -131,9 +148,7 @@ function App() {
         }
         const result = await response.json().catch(() => ({}));
         throw new Error(
-          typeof result.detail === "string"
-            ? result.detail
-            : `请求失败 (${response.status})`,
+          readableDetail(result.detail) || `请求失败 (${response.status})`,
         );
       }
       return response.json();
@@ -320,7 +335,7 @@ function App() {
       const result = await r.json().catch(() => ({}));
       if (!r.ok)
         throw Error(
-          typeof result.detail === "string" ? result.detail : "登录失败，请稍后重试",
+          readableDetail(result.detail) || "登录失败，请稍后重试",
         );
       setToken(result.access_token);
       setMe(result.user);

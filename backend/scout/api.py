@@ -130,10 +130,21 @@ def change_password(body: PasswordInput, user=Depends(auth.current_user)):
 
 
 class UserCreate(BaseModel):
-    username: str = Field(min_length=2, max_length=64, pattern=r"^[A-Za-z0-9_.@-]+$")
+    username: str = Field(min_length=2, max_length=64)
     password: str = Field(min_length=8, max_length=128)
     display_name: str = Field(default="", max_length=80)
     role: Literal["admin", "member"] = "member"
+
+    @field_validator("username")
+    @classmethod
+    def clean_username(cls, value: str) -> str:
+        """允许中文姓名作用户名，只拒绝空白字符。"""
+        name = value.strip()
+        if not name:
+            raise ValueError("用户名不能为空")
+        if any(ch.isspace() for ch in name):
+            raise ValueError("用户名不能包含空格")
+        return name
 
 
 @app.get("/api/v1/users", dependencies=[Depends(auth.require_admin)])
