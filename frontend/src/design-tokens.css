@@ -280,9 +280,7 @@
 
 /* ---------- 视觉打磨：层次 / 统一性 / 质感（纯样式，不动数据） ---------- */
 
-/* 头部：标题下方“毛笔扫过”笔触 —— 中段饱满、两端飞白，噪点扰动枯笔边缘 */
-.screen .mast {position:relative;}
-.screen .mast::after {content:"";position:absolute;left:0;right:0;bottom:-10px;height:16px;pointer-events:none;opacity:.62;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 20' preserveAspectRatio='none'><filter id='b' x='-10%25' y='-40%25' width='120%25' height='180%25'><feTurbulence type='fractalNoise' baseFrequency='0.012 0.16' numOctaves='2' seed='11' result='n'/><feDisplacementMap in='SourceGraphic' in2='n' scale='5'/></filter><path d='M0 11 C60 5 150 3 260 6 C360 8 460 13 540 11 C572 10 592 12 599 14 L596 16 C540 19 440 18 340 15 C240 12 120 12 40 16 C18 17 4 16 0 11 Z' fill='%235fb9cb' fill-opacity='0.55' filter='url(%23b)'/></svg>") no-repeat center / 100% 100%;}
+/* 头部：标题下方不加任何装饰线（渐变细条与毛笔笔触均已移除） */
 
 /* 1. 面板标题锚点：左侧主题色竖条 + 计数右对齐 */
 .screen h2 {display:flex;align-items:baseline;gap:8px;}
