@@ -53,15 +53,15 @@ export function Xiaohongshu({request}:{request:Request}) {
       {rules===null?<p className="empty">正在读取配置…</p>:<form aria-labelledby="xhs-rules-title" onSubmit={e=>{
         e.preventDefault();const query=String(new FormData(e.currentTarget).get('query')||'');
         void action(async()=>{
-          if(rules[0])await request(`/rules/${rules[0].id}`,{method:'PATCH',body:JSON.stringify({query,enabled:true,interval_seconds:0})});
+          if(rules[0])await request(`/rules/${rules[0].id}`,{method:'PATCH',body:JSON.stringify({query})});
           else await request('/rules',{method:'POST',body:JSON.stringify({name:'小红书需求',query,provider:'xiaohongshu',enabled:true,interval_seconds:0,max_results:20})});
-          setRevision(n=>n+1);setMessage('关键词已保存，登录后自动持续采集。');
+          setRevision(n=>n+1);setMessage(rules[0]?'关键词已修改，保持原启停状态；当前批次结束后使用新关键词。':'关键词已保存，登录后自动持续采集。');
         });
       }}><label htmlFor="xhs-query">搜索关键词（每行一组）</label><textarea key={rules[0]?.id||'new'} id="xhs-query" name="query" required maxLength={500} defaultValue={rules[0]?.query||defaults}/>
-        <button type="submit" disabled={busy}>保存并持续采集</button>
+        <button type="submit" disabled={busy}>{rules[0]?'保存修改':'保存并开始采集'}</button>
       </form>}
       <p className="hint">保留近30天提出软件或信息化需求的帖子，过滤接单广告和教程。去重后：来源终端 → 蜘蛛搬运 → 信息库。入库后按商机流程推送钉钉，等待群成员认领。</p>
-      {rules?.map(r=>{const c=collectors.find(c=>c.id===r.id);return <article className="rule" key={r.id}><div><h3>{r.name}</h3><p>{!r.enabled?'已停止':c?.error_code?(errors[c.error_code]||c.error_code):c?.state==='running'?'正在搜索':c?.state==='cleaning'?'正在读取笔记':'等待下一批'}</p>{c?.query&&<small>当前搜索：{c.query}</small>}</div><button disabled={busy} onClick={()=>action(async()=>{await request(`/rules/${r.id}`,{method:'PATCH',body:JSON.stringify({enabled:!r.enabled})});setRevision(n=>n+1);})}>{r.enabled?'停止采集':'继续采集'}</button></article>})}
+      {rules?.map(r=>{const c=collectors.find(c=>c.id===r.id);return <article className="rule" key={r.id}><div><h3>{r.name}</h3><p>{!r.enabled?'已停止':c?.error_code?(errors[c.error_code]||c.error_code):c?.state==='running'?'正在搜索':c?.state==='cleaning'?'正在读取笔记':'等待下一批'}</p>{c?.query&&<small>当前搜索：{c.query}</small>}</div><button disabled={busy} onClick={()=>action(async()=>{await request(`/rules/${r.id}`,{method:'PATCH',body:JSON.stringify({enabled:!r.enabled})});setRevision(n=>n+1);})}>{r.enabled?'停止采集':'开始采集'}</button></article>})}
     </section>
   </div>;
 }

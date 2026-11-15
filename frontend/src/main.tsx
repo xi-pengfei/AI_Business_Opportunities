@@ -1,18 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
+import { CollectorMonitor } from "./CollectorMonitor";
+import "./collector-monitor.css";
 import { Charts } from "./Charts";
 import type { ChartSelection } from "./Charts";
 import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
-import {SourceFields, Information} from "./FlowPanels";
+import {SourceFeed} from "./SourceFeed";
+import {Information} from "./FlowPanels";
 import { Xiaohongshu } from "./Xiaohongshu";
 import { FollowupPanels } from "./FollowupPanels";
+import { NetworkRules } from "./NetworkRules";
 import { Customers } from "./Customers";
 import { Spider } from "./Spider";
 import { clock, fullTime, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item } from "./types";
 import "./style.css";
 import "./display-layout.css";
+import "./black-theme.css";
+import "./design-tokens.css";
+import "./console.css";
 
 const base = "/api/v1";
 function App() {
@@ -34,11 +41,7 @@ function App() {
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [connected, setConnected] = useState(false);
-  const [providers, setProviders] = useState<{
-    searxng: { configured: boolean };
-    tavily: { configured: boolean };
-    demo: { enabled: boolean };
-  } | null>(null);
+  const [informationStatus, setInformationStatus] = useState("active");
   const [detail, setDetail] = useState<
     (Item & { evidence: { raw_content: string; content_kind: string } }) | null
   >(null);
@@ -135,17 +138,15 @@ function App() {
       }
       hydrated.current = true;
       if (page !== "display") {
-        const [r, t, i, p] = await Promise.all([
+        const [r, t, i] = await Promise.all([
           request("/rules"),
           request(`/tasks?demo=${demo}`),
-          request(`/items?demo=${demo}`),
-          request("/providers"),
+          request(`/items?demo=${demo}&status=${informationStatus}`),
         ]);
         if (activeView.current !== viewKey) return;
         setRules(r);
         setTasks(t);
         setItems(i);
-        setProviders(p);
       }
     } catch (e) {
       if (activeView.current !== viewKey) return;
@@ -154,7 +155,7 @@ function App() {
     } finally {
       refreshing.current = false;
     }
-  }, [token, demo, page, request, nextCargo]);
+  }, [token, demo, page, request, nextCargo, informationStatus]);
   useEffect(() => {
     setChartSelection(null);
     hydrated.current = false;
@@ -312,423 +313,374 @@ function App() {
     );
   const display = page === "display";
 
+  const navRules = rules.filter(r=>r.provider!=="demo"&&r.provider!=="xiaohongshu"&&!r.search_spec?.retired).length;
+  const liveTasks = tasks.filter(t=>["running","queued","retry_wait"].includes(t.status)).length;
+  const crumb = ({
+    rules:["网络商机","商机主题列表"],
+    customers:["客户监控","客户信号"],
+    xiaohongshu:["小红书","账号与关键词"],
+    tasks:["任务运行","实时任务"],
+    information:["信息库","已入库档案"],
+  } as Record<string,[string,string]>)[page]||["管理台",""];
+  const navIcon=(paths:string[])=>(
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {paths.map((d,i)=><path key={i} d={d}/>)}
+    </svg>
+  );
+  const NAV:Array<[string,string,string[]]>= [
+    ["rules","网络商机",["M3 17l5-5 4 3 5-7 4 4","M3 21h18"]],
+    ["customers","客户监控",["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2","M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z","M22 21v-2a4 4 0 0 0-3-3.87"]],
+    ["xiaohongshu","小红书",["M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-5 4z","M8 9h8","M8 12h5"]],
+    ["tasks","任务运行",["M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18","M12 7v5l3.5 2"]],
+    ["information","信息库",["M4 19.5A2.5 2.5 0 0 1 6.5 17H20","M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"]],
+  ];
   return (
     <main className={display ? `screen${fullscreen ? " is-fullscreen" : ""}` : "workspace"}>
-      <header className="mast">
-        <h1>AI商机智能体</h1>
-        <div className="toolbar">
-          <button className="management-action" hidden={fullscreen} onClick={() => navigate(display ? "rules" : "display")}>
-            {display ? "管理台" : "展示大屏"}
-          </button>
-          <button hidden={fullscreen}
-            onClick={() => {
-              setToken("");
-              setData(null);
-            }}
-          >
-            退出
-          </button>
-          {display && (
-            <button
-              onClick={() => {
-                setError("");
-                (document.fullscreenElement
-                  ? document.exitFullscreen()
-                  : document.documentElement.requestFullscreen()
-                ).catch(() => setError("当前浏览器无法切换全屏"));
-              }}
-            >
-              {fullscreen ? "退出全屏" : "全屏"}
-            </button>
-          )}
-        </div>
-      </header>
-      {!display && (
-        <nav aria-label="管理导航">
-          {[
-            ["rules", "采集规则"],
-            ["customers", "客户监测"],
-            ["xiaohongshu", "小红书"],
-            ["tasks", "任务运行"],
-            ["information", "信息库"],
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              aria-current={page === key ? "page" : undefined}
-              onClick={() => navigate(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
-      )}
-      {connectionError && (
-        <p className="error" role="status">
-          {connectionError}
-        </p>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      {message && (
-        <p className="success" role="status">
-          {message}
-        </p>
-      )}
-      {display && data && (
+      {display ? (
         <>
-          <div className="charts"><Charts data={data} onSelect={setChartSelection} dark={fullscreen} /></div>
-          {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
-            selection={chartSelection} request={request} close={() => setChartSelection(null)}
-            open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
+          <header className="mast">
+            <h1>AI商机智能体</h1>
+            <div className="toolbar">
+              <button className="management-action" hidden={fullscreen} onClick={() => navigate("rules")}>
+                管理台
+              </button>
+              <button hidden={fullscreen}
+                onClick={() => {
+                  setToken("");
+                  setData(null);
+                }}
+              >
+                退出
+              </button>
+              <button
+                onClick={() => {
+                  setError("");
+                  (document.fullscreenElement
+                    ? document.exitFullscreen()
+                    : document.documentElement.requestFullscreen()
+                  ).catch(() => setError("当前浏览器无法切换全屏"));
+                }}
+              >
+                {fullscreen ? "退出全屏" : "全屏"}
+              </button>
+            </div>
+          </header>
+          {connectionError && (
+            <p className="error" role="status">
+              {connectionError}
+            </p>
+          )}
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          {message && (
+            <p className="success" role="status">
+              {message}
+            </p>
+          )}
+          {display && data && (
+            <>
+              <div className="charts"><Charts data={data} onSelect={setChartSelection} dark /></div>
+              {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
+                selection={chartSelection} request={request} close={() => setChartSelection(null)}
+                open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
 
-          <div className="collector-strip">
-            {data.collectors?.length ? (
-              data.collectors.map((c) => (
-                <section key={c.id}>
-                  <strong>
-                    {c.waiting_recheck ? "等待首页复查／入口恢复" : (
-                      {
-                        queued: "准备搜索",
-                        running: "正在搜索",
-                        cleaning: "清洗入库",
-                        next_batch: "继续下一批",
-                        retry_wait: "失败重试中",
-                        action_required: "等待服务恢复",
-                        failed: "本批失败",
-                      } as Record<string, string>
-                    )[c.state] || c.state}
-                  </strong>
-                  <span>{c.query || c.name}</span>
-                  <small>{c.search_engine || '搜索服务'} · 第 {c.search_page || 1} 页
-                    {c.search_outcome === 'empty' ? ' · 本次返回 0 条' : ''}
-                    {c.search_outcome === 'partial_results' ? ' · 部分入口异常，已有结果继续处理' : ''}
-                    {c.waiting_recheck ? ' · 等待重新检查搜索结果第一页' : ''}
-                  </small>
-                  <small>最后搜到结果：{c.last_result_at ? new Date(c.last_result_at*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '尚未搜到'}
-                    {' · '}最后新增商机：{c.last_opportunity_at ? new Date(c.last_opportunity_at*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '尚无新增'}
-                  </small>
-                  <small>
-                    第 {c.rounds} 批
-                    {c.total > 0
-                      ? ` · 已处理 ${c.done} / ${c.total} · 重复 ${c.duplicates}`
-                      : ""}
-                  </small>
-                  {c.total > 0 && (
-                    <progress
-                      aria-label="本批处理进度"
-                      value={c.done}
-                      max={c.total}
-                    />
-                  )}
-                  {c.error_code && ["retry_wait", "failed", "action_required"].includes(c.state) && (
-                    <small>{errors[c.error_code] || c.error_code}</small>
+              <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
+              <div className="workfield">
+                <section className="panel terminal">
+                  <h2>信息来源</h2>
+                  <SourceFeed items={terminalFeed} moving={moving} landed={landed} />
+                  <p>
+                    {data.collectors?.some((c) => c.state === "running")
+                      ? "正在搜索新来源"
+                      : data.collectors?.some((c) => c.state === "cleaning")
+                        ? "正在清洗本批信息"
+                        : data.collectors?.some(c => c.state === "retry_wait")
+                          ? "搜索服务等待重试"
+                        : data.collectors?.some(
+                              (c) => c.state === "action_required",
+                            )
+                          ? "采集服务等待授权或额度恢复"
+                          : data.collectors?.length
+                            ? "自动衔接下一批"
+                            : "采集已停止"}
+                  </p>
+                  {data.events.slice(0, 3).map((e) => (
+                    <div className="log" key={e.id}>
+                      <time>{clock(e.created_at)}</time>
+                      <span>
+                        {e.kind === "item.created"
+                          ? "信息已归集"
+                          : e.kind === "item.duplicate"
+                            ? "重复信息已合并"
+                            : status[e.kind.split(".")[1]] || e.kind}
+                      </span>
+                      <code>{e.task_id.slice(0, 8)}</code>
+                    </div>
+                  ))}
+                  {!data.events.length && (
+                    <p className="empty">
+                      尚无执行记录。请先在管理台创建规则并执行。
+                    </p>
                   )}
                 </section>
-              ))
-            ) : (
-              <span>采集已停止</span>
-            )}
-          </div>
-          <div className="workfield">
-            <section className="panel terminal">
-              <h2>信息来源</h2>
-              <div className="terminal-feed">
-                {terminalFeed.map(entry => <article className={`source-preview ${moving?.id === entry.id ? "cargo-source" : ""}`} key={entry.id}>
-                  <SourceFields item={entry} moving={moving} landed={landed} />
-                </article>)}
+                <section className="panel library">
+                  <h2>
+                    信息库 <small>{data.pending_count} 条</small>
+                  </h2>
+                  <Information
+                    items={library}
+                    lifecycle={false}
+                    autoScroll={!moving}
+                    open={(item) => {
+                      if (item.url)
+                        request(`/items/${item.id}`)
+                          .then(setDetail)
+                          .catch((e) => setError(e.message));
+                    }}
+                  />
+                </section>
+                <Spider
+                  item={moving}
+                  onDelivered={completeCargo}
+                  searching={
+                    connected &&
+                    !!data.collectors?.some((c) =>
+                      ["queued", "running", "cleaning", "retry_wait", "next_batch"].includes(c.state),
+                    )
+                  }
+                />
+              </div>
+              <FollowupPanels data={data} open={item=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
+            </>
+          )}
+          {!data && <div className="empty">正在读取运行状态…</div>}
+          {detail && (
+            <section className="panel detail" aria-label="信息证据详情">
+              <div className="detail-title">
+                <h2>{detail.title}</h2>
+                <button onClick={() => setDetail(null)}>关闭详情</button>
               </div>
               <p>
-                {data.collectors?.some((c) => c.state === "running")
-                  ? "正在搜索新来源"
-                  : data.collectors?.some((c) => c.state === "cleaning")
-                    ? "正在清洗本批信息"
-                    : data.collectors?.some(c => c.state === "retry_wait")
-                      ? "搜索服务等待重试"
-                    : data.collectors?.some(
-                          (c) => c.state === "action_required",
-                        )
-                      ? "采集服务等待授权或额度恢复"
-                      : data.collectors?.length
-                        ? "自动衔接下一批"
-                        : "采集已停止"}
+                {detail.evidence.content_kind === "search_excerpt"
+                  ? "搜索摘要（未获取完整正文）"
+                  : "来源正文"}{" "}
+                · {clock(detail.created_at)}
               </p>
-              {data.events.slice(0, 3).map((e) => (
-                <div className="log" key={e.id}>
-                  <time>{clock(e.created_at)}</time>
-                  <span>
-                    {e.kind === "item.created"
-                      ? "信息已归集"
-                      : e.kind === "item.duplicate"
-                        ? "重复信息已合并"
-                        : status[e.kind.split(".")[1]] || e.kind}
-                  </span>
-                  <code>{e.task_id.slice(0, 8)}</code>
-                </div>
+              <a href={detail.url} target="_blank" rel="noopener noreferrer">
+                查看原始网址
+              </a>
+              {detail.region_evidence && <p>地区依据：{detail.region_evidence}</p>}
+              {detail.ai_review?.reason && <p>AI 审核：{detail.ai_review.reason} · {detail.ai_review.model}</p>}
+              {detail.ai_review?.deduplication && <p>相似信息比对：{detail.ai_review.deduplication.reason}</p>}
+              {detail.related_item_id && <p>{detail.relation_kind==='update'?'这是关联商机的新进展':'已关联到同一商机'} <button className="text-button" onClick={()=>request(`/items/${detail.related_item_id}`).then(setDetail).catch(e=>setError(e.message))}>查看关联商机</button></p>}
+              {!!detail.source_urls?.length && <div><p>原始来源网址</p>{detail.source_urls.map(url=><p key={url}><a href={url} target="_blank" rel="noopener noreferrer">{url}</a></p>)}</div>}
+              {detail.ai_review?.evidence && <p>判断依据：{detail.ai_review.evidence}</p>}
+              {detail.ai_review?.error && <p>审核暂未完成：{detail.ai_review.error}</p>}
+              {detail.quality_status==='review_required' && <button disabled={busy} onClick={()=>action(()=>request(`/items/${detail.id}/review`,{method:'POST'}),'已重新加入审核队列')}>重新审核</button>}
+              <pre>{detail.evidence.raw_content}</pre>
+            </section>
+          )}
+          <div className="notice" role="status">
+            {connected ? "服务已连接" : "连接中断或等待服务"} · {streamState}
+            {data && ` · 最后更新 ${fullTime(data.server_time)}`}
+          </div>
+        </>
+      ) : (
+        <>
+          <aside className="console-side">
+            <div className="console-brand">
+              <span className="console-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1L7 17M17 7l2.1-2.1" />
+                  <circle cx="12" cy="12" r="3.2" />
+                </svg>
+              </span>
+              <div>
+                <b>AI 商机智能体</b>
+                <small>Opportunity Agent</small>
+              </div>
+            </div>
+            <nav className="console-nav" aria-label="管理导航">
+              {NAV.map(([key, label, paths]) => (
+                <button
+                  key={key}
+                  className="console-nav-item"
+                  aria-current={page === key ? "page" : undefined}
+                  onClick={() => navigate(key)}
+                >
+                  {navIcon(paths)}
+                  <span>{label}</span>
+                  {key === "rules" && navRules > 0 && <em className="console-badge">{navRules}</em>}
+                  {key === "tasks" && liveTasks > 0 && <em className="console-badge live">{liveTasks}</em>}
+                </button>
               ))}
-              {!data.events.length && (
-                <p className="empty">
-                  尚无执行记录。请先在管理台创建规则并执行。
+            </nav>
+            <div className="console-side-foot">
+              <span className="console-avatar" aria-hidden="true">AI</span>
+              <div>
+                <b>管理员</b>
+                <small>本机控制台</small>
+              </div>
+            </div>
+          </aside>
+          <div className="console-main">
+            <header className="mast console-top">
+              <div className="console-crumb">
+                <span>{crumb[0]}</span>
+                <span className="console-crumb-sep" aria-hidden="true">/</span>
+                <b>{crumb[1]}</b>
+              </div>
+              <div className="toolbar">
+                <span className={"console-live" + (connected ? "" : " is-down")}>
+                  <i className="console-pulse" aria-hidden="true" />
+                  {connected ? `采集中 ${liveTasks}` : "连接等待中"}
+                </span>
+                <button onClick={() => navigate("display")}>展示大屏</button>
+                <button
+                  onClick={() => {
+                    setToken("");
+                    setData(null);
+                  }}
+                >
+                  退出
+                </button>
+              </div>
+            </header>
+            <div className="console-body">
+              {connectionError && (
+                <p className="error" role="status">
+                  {connectionError}
                 </p>
               )}
-            </section>
-            <section className="panel library">
-              <h2>
-                信息库 <small>{data.pending_count} 条</small>
-              </h2>
-              <Information
-                items={library}
-                lifecycle={false}
-                autoScroll={!moving}
-                open={(item) => {
-                  if (item.url)
-                    request(`/items/${item.id}`)
-                      .then(setDetail)
-                      .catch((e) => setError(e.message));
-                }}
-              />
-            </section>
-            <Spider
-              item={moving}
-              onDelivered={completeCargo}
-              searching={
-                connected &&
-                !!data.collectors?.some((c) =>
-                  ["queued", "running", "cleaning", "retry_wait", "next_batch"].includes(c.state),
-                )
-              }
-            />
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+              {message && (
+                <p className="success" role="status">
+                  {message}
+                </p>
+              )}
+              {!data && <div className="empty">正在读取运行状态…</div>}
+              {page === "xiaohongshu" && <Xiaohongshu request={request} />}
+              {page === "customers" && <Customers request={request} manage />}
+              {page === "rules" && <NetworkRules rules={rules} request={request} onSaved={refresh} />}
+              {page === "tasks" && (
+                <section className="panel">
+                  <h2>
+                    任务运行 <small>最近 50 条</small>
+                  </h2>
+                  <div className="table-scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>任务</th>
+                          <th>阶段</th>
+                          <th>状态</th>
+                          <th>尝试</th>
+                          <th>原因</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tasks.map((t) => (
+                          <tr key={t.id}>
+                            <td>
+                              <code>{t.id.slice(0, 8)}</code>
+                              <small>{clock(t.created_at)}</small>
+                            </td>
+                            <td>{t.kind === "search" ? "发现来源" : "清洗入库"}</td>
+                            <td><span className={"st st-" + t.status}>{status[t.status]}</span></td>
+                            <td>{t.attempts}</td>
+                            <td>
+                              {t.error_code
+                                ? errors[t.error_code] || t.error_code
+                                : "—"}
+                            </td>
+                            <td>
+                              {["failed", "action_required"].includes(t.status) && (
+                                <button
+                                  disabled={busy}
+                                  onClick={() =>
+                                    action(
+                                      () =>
+                                        request(`/tasks/${t.id}/retry`, {
+                                          method: "POST",
+                                        }),
+                                      "已重新入队。",
+                                    )
+                                  }
+                                >
+                                  重试
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!tasks.length && <p className="empty">尚无任务。</p>}
+                </section>
+              )}
+              {page === "information" && (
+                <section className="panel library">
+                  <h2>
+                    信息库 <small>最近 50 条 · 原文待人工核实</small>
+                  </h2>
+                  <label>信息状态 <select value={informationStatus} onChange={e=>{setItems([]);setInformationStatus(e.target.value);}}>
+                    <option value="active">有效信息</option><option value="review_pending">待 AI 审核</option>
+                    <option value="review_required">待核实 / 审核异常</option><option value="archived">已过滤 / 已归档</option><option value="merged">重复信息（已合并）</option>
+                  </select></label>
+                  <p className="scroll-hint">表格可横向滚动，右侧可查看推送与认领记录</p>
+                  <Information
+                    items={items}
+                    open={(item) =>
+                      request(`/items/${item.id}`)
+                        .then(setDetail)
+                        .catch((e) => setError(e.message))
+                    }
+                  />
+                </section>
+              )}
+              {detail && (
+                <section className="panel detail" aria-label="信息证据详情">
+                  <div className="detail-title">
+                    <h2>{detail.title}</h2>
+                    <button onClick={() => setDetail(null)}>关闭详情</button>
+                  </div>
+                  <p>
+                    {detail.evidence.content_kind === "search_excerpt"
+                      ? "搜索摘要（未获取完整正文）"
+                      : "来源正文"}{" "}
+                    · {clock(detail.created_at)}
+                  </p>
+                  <a href={detail.url} target="_blank" rel="noopener noreferrer">
+                    查看原始网址
+                  </a>
+                  {detail.region_evidence && <p>地区依据：{detail.region_evidence}</p>}
+                  {detail.ai_review?.reason && <p>AI 审核：{detail.ai_review.reason} · {detail.ai_review.model}</p>}
+                  {detail.ai_review?.deduplication && <p>相似信息比对：{detail.ai_review.deduplication.reason}</p>}
+                  {detail.related_item_id && <p>{detail.relation_kind==='update'?'这是关联商机的新进展':'已关联到同一商机'} <button className="text-button" onClick={()=>request(`/items/${detail.related_item_id}`).then(setDetail).catch(e=>setError(e.message))}>查看关联商机</button></p>}
+                  {!!detail.source_urls?.length && <div><p>原始来源网址</p>{detail.source_urls.map(url=><p key={url}><a href={url} target="_blank" rel="noopener noreferrer">{url}</a></p>)}</div>}
+                  {detail.ai_review?.evidence && <p>判断依据：{detail.ai_review.evidence}</p>}
+                  {detail.ai_review?.error && <p>审核暂未完成：{detail.ai_review.error}</p>}
+                  {detail.quality_status==='review_required' && <button disabled={busy} onClick={()=>action(()=>request(`/items/${detail.id}/review`,{method:'POST'}),'已重新加入审核队列')}>重新审核</button>}
+                  <pre>{detail.evidence.raw_content}</pre>
+                </section>
+              )}
+            </div>
+            <div className="notice console-notice" role="status">
+              {connected ? "服务已连接" : "连接中断或等待服务"} · {streamState}
+              {data && ` · 最后更新 ${fullTime(data.server_time)}`}
+            </div>
           </div>
-          <FollowupPanels data={data} open={item=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
         </>
       )}
-      {!data && <div className="empty">正在读取运行状态…</div>}
-      {!display && page === "xiaohongshu" && <Xiaohongshu request={request} />}
-      {!display && page === "customers" && <Customers request={request} manage />}
-      {!display && page === "rules" && (
-        <div className="rule-layout">
-          <section className="panel">
-            <h2>新建采集规则</h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = e.currentTarget,
-                  fd = new FormData(form);
-                action(async () => {
-                  await request("/rules", {
-                    method: "POST",
-                    body: JSON.stringify({
-                      name: fd.get("name"),
-                      query: fd.get("query"),
-                      provider: fd.get("provider"),
-                      interval_seconds: 0,
-                      max_results: 20,
-                      enabled: true,
-                    }),
-                  });
-                  form.reset();
-                }, "规则已开始连续采集，可随时停止。");
-              }}
-            >
-              <label>
-                规则名称
-                <input
-                  name="name"
-                  required
-                  maxLength={120}
-                  placeholder="例如：制造业数据平台需求"
-                />
-              </label>
-              <label>
-                搜索关键词（每行一组，自动轮转）
-                <textarea
-                  name="query"
-                  required
-                  maxLength={500}
-                  placeholder="例如：制造业 ERP MES 数据打通 招标"
-                />
-              </label>
-              <label>
-                搜索服务
-                <select name="provider">
-                  <option value="searxng">SearXNG 自建搜索</option>
-                  <option value="tavily">
-                    Tavily 全网搜索
-                    {providers && !providers.tavily.configured
-                      ? "（待配置密钥）"
-                      : ""}
-                  </option>
-                </select>
-              </label>
-              <button disabled={busy}>保存并开始采集</button>
-              <p className="hint">
-                自动轮转关键词并扩展地区；停止后完成当前批次，不再开始下一批。
-              </p>
-            </form>
-          </section>
-          <section className="panel">
-            <h2>采集规则</h2>
-            {!rules.length ? (
-              <p className="empty">还没有规则。从左侧添加第一组关键词。</p>
-            ) : (
-              rules
-                .filter((r) => r.provider !== "demo" && r.provider !== "xiaohongshu")
-                .map((r) => (
-                  <article className="rule" key={r.id}>
-                    <div>
-                      <h3>{r.name}</h3>
-                      <p>{r.query}</p>
-                      <small>
-                        {r.interval_seconds === 0
-                          ? "连续采集"
-                          : `每 ${r.interval_seconds / 60} 分钟`}{" "}
-                        · {r.enabled ? "运行中" : "已停止"}
-                      </small>
-                    </div>
-                    <div className="actions">
-                      <button
-                        disabled={busy}
-                        onClick={() =>
-                          action(
-                            () =>
-                              request(`/rules/${r.id}/run`, {
-                                method: "POST",
-                                headers: {
-                                  "Idempotency-Key": crypto.randomUUID(),
-                                },
-                              }),
-                            "任务已进入队列。",
-                          )
-                        }
-                      >
-                        执行一次
-                      </button>
-                      <button
-                        disabled={busy}
-                        onClick={() =>
-                          action(
-                            () =>
-                              request(`/rules/${r.id}`, {
-                                method: "PATCH",
-                                body: JSON.stringify({
-                                  enabled: !r.enabled,
-                                  interval_seconds: 0,
-                                  max_results: 20,
-                                }),
-                              }),
-                            r.enabled
-                              ? "已停止后续调度，已入队任务继续执行。"
-                              : "规则已启用。",
-                          )
-                        }
-                      >
-                        {r.enabled ? "停止" : "开始采集"}
-                      </button>
-                    </div>
-                  </article>
-                ))
-            )}
-          </section>
-        </div>
-      )}
-      {!display && page === "tasks" && (
-        <section className="panel">
-          <h2>
-            任务运行 <small>最近 50 条</small>
-          </h2>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>任务</th>
-                  <th>阶段</th>
-                  <th>状态</th>
-                  <th>尝试</th>
-                  <th>原因</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map((t) => (
-                  <tr key={t.id}>
-                    <td>
-                      <code>{t.id.slice(0, 8)}</code>
-                      <small>{clock(t.created_at)}</small>
-                    </td>
-                    <td>{t.kind === "search" ? "发现来源" : "清洗入库"}</td>
-                    <td>{status[t.status]}</td>
-                    <td>{t.attempts}</td>
-                    <td>
-                      {t.error_code
-                        ? errors[t.error_code] || t.error_code
-                        : "—"}
-                    </td>
-                    <td>
-                      {["failed", "action_required"].includes(t.status) && (
-                        <button
-                          disabled={busy}
-                          onClick={() =>
-                            action(
-                              () =>
-                                request(`/tasks/${t.id}/retry`, {
-                                  method: "POST",
-                                }),
-                              "已重新入队。",
-                            )
-                          }
-                        >
-                          重试
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {!tasks.length && <p className="empty">尚无任务。</p>}
-        </section>
-      )}
-      {!display && page === "information" && (
-        <section className="panel">
-          <h2>
-            信息库 <small>最近 50 条 · 原文待人工核实</small>
-          </h2>
-          <Information
-            items={items}
-            open={(item) =>
-              request(`/items/${item.id}`)
-                .then(setDetail)
-                .catch((e) => setError(e.message))
-            }
-          />
-        </section>
-      )}
-      {detail && (
-        <section className="panel detail" aria-label="信息证据详情">
-          <div className="detail-title">
-            <h2>{detail.title}</h2>
-            <button onClick={() => setDetail(null)}>关闭详情</button>
-          </div>
-          <p>
-            {detail.evidence.content_kind === "search_excerpt"
-              ? "搜索摘要（未获取完整正文）"
-              : "来源正文"}{" "}
-            · {clock(detail.created_at)}
-          </p>
-          <a href={detail.url} target="_blank" rel="noopener noreferrer">
-            查看原始网址
-          </a>
-          {detail.region_evidence && <p>地区依据：{detail.region_evidence}</p>}
-          <pre>{detail.evidence.raw_content}</pre>
-        </section>
-      )}
-      <div className="notice" role="status">
-        {connected ? "服务已连接" : "连接中断或等待服务"} · {streamState}
-        {data && ` · 最后更新 ${fullTime(data.server_time)}`}
-      </div>
     </main>
   );
 }

@@ -26,6 +26,7 @@ from scout.models import (
     Rule,
     Task,
 )
+from scout.product_rules import ProductInput, ProductSpec
 from scout.service import emit, start_rule
 
 app = FastAPI(title="AI商机智能体", version="0.1.0")
@@ -74,17 +75,19 @@ class RuleInput(BaseModel):
 
 
 class EnableInput(BaseModel):
-    enabled: bool
+    enabled: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    provider: Literal["searxng", "tavily"] | None = None
     interval_seconds: int | None = Field(default=None, ge=0, le=2592000)
     max_results: int | None = Field(default=None, ge=1, le=20)
     query: str | None = Field(default=None, min_length=1, max_length=500)
 
-    @field_validator("query")
+    @field_validator("name", "query")
     @classmethod
     def nonblank_query(cls, value):
         if value is not None and not value.strip():
-            raise ValueError("关键词不能为空")
-        return value
+            raise ValueError("名称和关键词不能为空")
+        return value.strip() if value is not None else None
 
 
 @app.get("/health/live")
@@ -119,6 +122,62 @@ def rules():
         ]
 
 
+@app.post("/api/v1/rules/review", dependencies=[Depends(admin)])
+def review_rule(body: RuleInput):
+    from scout.keyword_review import review
+    try:
+        return review(body.name, body.query, settings())
+    except Exception:
+        raise HTTPException(503, "AI检查暂时不可用，配置未保存、未启动，请稍后重试") from None
+
+
+
+
+@app.post("/api/v1/network-rules/review", dependencies=[Depends(admin)])
+def review_product_rule(body: ProductSpec):
+    from scout.product_rules import review_product
+    try:
+        return review_product(body, settings())
+    except Exception:
+        raise HTTPException(503, "AI检查暂时不可用，尚未保存或启动") from None
+
+
+def save_product_rule(body, rule_id=None):
+    spec=ProductSpec.model_validate(body.model_dump())
+    with Session.begin() as db:
+        rule=db.scalar(select(Rule).where(Rule.id==rule_id).with_for_update()) if rule_id else None
+        if rule_id and (not rule or rule.source_type!='public_tender' or (rule.search_spec or {}).get('retired')):
+            raise HTTPException(404, "网络采集词条不存在")
+        others=db.scalars(select(Rule).where(Rule.source_type=='public_tender',Rule.provider!='demo')).all()
+        if any(r.id!=rule_id and not (r.search_spec or {}).get('retired') and r.name.casefold()==spec.product.casefold() for r in others):
+            raise HTTPException(409, "已存在同名产品，请修改现有词条")
+        if rule is None:
+            rule=Rule(source_type='public_tender')
+            db.add(rule)
+        else:
+            rule.version+=1
+        rule.name=spec.product
+        rule.search_spec=spec.model_dump()
+        rule.query='\n'.join(spec.searches())
+        rule.provider='searxng'
+        rule.interval_seconds=0
+        rule.max_results=20
+        rule.enabled=body.enabled
+        rule.next_run_at=time.time()
+        db.flush()
+        return record(rule)
+
+
+@app.post("/api/v1/network-rules", status_code=201, dependencies=[Depends(admin)])
+def create_product_rule(body: ProductInput):
+    return save_product_rule(body)
+
+
+@app.patch("/api/v1/network-rules/{rule_id}", dependencies=[Depends(admin)])
+def edit_product_rule(rule_id: str, body: ProductInput):
+    return save_product_rule(body, rule_id)
+
+
 @app.post("/api/v1/rules", status_code=201, dependencies=[Depends(admin)])
 def create_rule(body: RuleInput):
     if body.provider == "demo" and not settings().allow_demo:
@@ -136,13 +195,16 @@ def enable_rule(rule_id: str, body: EnableInput):
         rule = db.scalar(select(Rule).where(Rule.id == rule_id).with_for_update())
         if not rule:
             raise HTTPException(404, "规则不存在")
-        rule.enabled = body.enabled
-        for field in ("interval_seconds", "max_results", "query"):
+        if body.provider is not None and rule.source_type != "public_tender":
+            raise HTTPException(422, "平台采集请在对应平台页面修改")
+        if body.enabled is not None:
+            rule.enabled = body.enabled
+        for field in ("name", "provider", "interval_seconds", "max_results", "query"):
             value = getattr(body, field)
             if value is not None:
                 setattr(rule, field, value)
         rule.version += 1
-        if body.enabled:
+        if rule.enabled:
             rule.next_run_at = time.time()
         return record(rule)
 
@@ -208,19 +270,30 @@ def retry_task(task_id: str):
 
 @app.get("/api/v1/items", dependencies=[Depends(admin)])
 def items(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
-          status: Literal["active", "archived"] = "active"):
+          status: Literal["active", "archived", "review_pending", "review_required", "merged"] = "active"):
 
     with Session() as db:
         return [
             item_record(db, i)
             for i in db.scalars(
                 (unique_items(demo) if status == "active" else
-                 select(Item).where(Item.is_demo == demo, Item.quality_status == "archived"))
+                 select(Item).where(Item.is_demo == demo, Item.quality_status == status))
                 .order_by(Item.created_at.desc(), Item.id)
                 .offset(offset)
                 .limit(limit)
             )
         ]
+
+
+@app.post("/api/v1/items/{item_id}/review", dependencies=[Depends(admin)])
+def retry_review(item_id: str):
+    with Session.begin() as db:
+        item = db.get(Item, item_id)
+        if not item or item.information_kind not in ("opportunity", "demand", "customer_update") or item.quality_status != "review_required":
+            raise HTTPException(409, "仅待核实的商机候选可重新审核")
+        item.ai_review = {}
+        item.quality_status, item.quality_reason = "review_pending", "ai_review_required"
+        return {"status": "review_pending"}
 
 
 @app.get("/api/v1/items/{item_id}", dependencies=[Depends(admin)])
@@ -247,7 +320,7 @@ def display_items(
     with Session() as db:
         query = unique_items(demo).where(Item.created_at >= start, Item.created_at < end)
         if region:
-            query = query.where(Item.region == region)
+            query = query.where(Item.region == region, Item.information_kind.in_(("opportunity", "demand")))
         if provider:
             query = query.join(Document, Item.document_id == Document.id).where(
                 Document.provider == provider
@@ -263,12 +336,13 @@ def display_items(
 @app.get("/api/v1/display/feed")
 def display_feed(after: float = Query(ge=0, allow_inf_nan=False), after_id: str = "", current=Depends(role)):
     with Session() as db:
+        available_at = func.coalesce(Item.ai_review["reviewed_at"].as_float(), Item.created_at)
         rows = db.scalars(unique_items(False).where(
-            (Item.created_at > after) | ((Item.created_at == after) & (Item.id > after_id))
-        ).order_by(Item.created_at, Item.id).limit(100)).all()
+            (available_at > after) | ((available_at == after) & (Item.id > after_id))
+        ).order_by(available_at, Item.id).limit(100)).all()
         return {"items": [item_record(db, i) if current == "admin" else {
             "id": i.id, "title": "已归集信息", "created_at": i.created_at, "is_demo": False,
-        } for i in rows], "after": rows[-1].created_at if rows else after,
+        } for i in rows], "after": (rows[-1].ai_review.get("reviewed_at") or rows[-1].created_at) if rows else after,
             "after_id": rows[-1].id if rows else after_id}
 
 
@@ -319,9 +393,9 @@ def snapshot(demo: bool = False, current=Depends(role)):
             "delivery": {"available": False, "sent": None},
             **assignment_facts(db, demo, now, current == "admin"),
             "regions": [{"name": r, "count": n} for r, n in db.execute(
-                select(Item.region, func.count()).where(Item.id.in_(unique_items(demo).with_only_columns(Item.id)), Item.region.is_not(None)).group_by(Item.region)
+                select(Item.region, func.count()).where(Item.id.in_(unique_items(demo).with_only_columns(Item.id)), Item.information_kind.in_(("opportunity", "demand")), Item.region.is_not(None)).group_by(Item.region)
             )],
-            "region_unknown": db.scalar(select(func.count()).select_from(unique_items(demo).where(Item.region.is_(None)).subquery())),
+            "region_unknown": db.scalar(select(func.count()).select_from(unique_items(demo).where(Item.information_kind.in_(("opportunity", "demand")), Item.region.is_(None)).subquery())),
             "task_scatter": [{"time": t.created_at, "duration": max(0, (t.updated_at if t.status in ("succeeded", "failed", "action_required") else now) - t.created_at), "status": t.status, "attempts": t.attempts, "kind": t.kind} for t in db.scalars(select(Task).where(Task.id.in_(public_tasks()), Task.is_demo == demo, Task.created_at >= start).order_by(Task.created_at.desc()).limit(300))],
             "collectors": collector_status(db, demo, current),
             "items": [
@@ -387,7 +461,23 @@ class CustomerInput(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     aliases: list[str] = Field(default_factory=list, max_length=5)
     website: str | None = Field(default=None, max_length=1000)
+    reference_urls: list[str] = Field(default_factory=list, max_length=10)
     identity_source: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("reference_urls", mode="before")
+    @classmethod
+    def parse_urls(cls, value):
+        import re
+
+        from scout.providers import ProviderError, canonical_url
+        if isinstance(value, str):
+            value = [s.strip() for s in re.split(r"[\n,，]+", value) if s.strip()]
+        if not isinstance(value, list) or any(not isinstance(v, str) or len(v) > 1000 for v in value):
+            raise ValueError("请输入网址列表，每个网址最多1000字符")
+        try:
+            return list(dict.fromkeys(canonical_url(v.strip()) for v in value if isinstance(v, str) and v.strip()))
+        except ProviderError:
+            raise ValueError("参考网址须为有效的公开网址") from None
 
     @field_validator("name")
     @classmethod
@@ -440,6 +530,29 @@ def create_customer(body: CustomerInput):
             return {**record(customer), "rule_id": rule.id, "enabled": True}
     except IntegrityError:
         raise HTTPException(409, "此客户已存在，请直接查看或启用现有监测") from None
+
+
+@app.patch("/api/v1/customers/{customer_id}", dependencies=[Depends(admin)])
+def update_customer(customer_id: str, body: CustomerInput):
+    from sqlalchemy.exc import IntegrityError
+
+    from scout.customers import queries
+    try:
+        with Session.begin() as db:
+            customer = db.scalar(select(Customer).where(Customer.id == customer_id).with_for_update())
+            if customer is None:
+                raise HTTPException(404, "客户不存在")
+            rule = db.scalar(select(Rule).where(Rule.customer_id == customer_id).with_for_update())
+            for key in body.model_fields_set:
+                setattr(customer, key, getattr(body, key))
+            rule.name, rule.query = customer.name, queries(customer)
+            rule.version += 1
+            if rule.enabled:
+                rule.next_run_at = time.time()
+            db.flush()
+            return {**record(customer), "enabled": rule.enabled, "rule_id": rule.id}
+    except IntegrityError:
+        raise HTTPException(409, "该客户名称已存在") from None
 
 
 @app.get("/api/v1/customer-signals")
@@ -506,3 +619,13 @@ def xhs_overview():
         ids = {r.id for r in rows}
         return {"rules": [record(r) for r in rows],
                 "collectors": [c for c in collector_status(db, False, "admin") if c["id"] in ids]}
+
+
+@app.get("/api/v1/dingtalk/groups", dependencies=[Depends(admin)])
+def discovered_groups():
+    from scout.models import DingTalkGroup
+    with Session() as db:
+        return [{"conversation_id": row.conversation_id, "title": row.title,
+                 "requested_at": row.requested_at,
+                 "bound": row.conversation_id == settings().dingtalk_conversation_id}
+                for row in db.scalars(select(DingTalkGroup).order_by(DingTalkGroup.requested_at.desc()).limit(20))]

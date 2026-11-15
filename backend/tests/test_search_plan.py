@@ -7,7 +7,7 @@ from scout.search_plan import choose, complete, variants
 
 def test_each_query_owns_pages_and_empty_search_returns_to_front(database):
     with database.begin() as db:
-        rule=Rule(name='test',query='甲\n乙',provider='searxng',interval_seconds=0)
+        rule=Rule(name='test',query='甲 采购公告\n乙 采购公告',provider='searxng',interval_seconds=0)
         db.add(rule)
         db.flush()
         first=choose(db,rule,['duckduckgo'],1000)

@@ -1,0 +1,41 @@
+.screen .collector-monitor{--cm-blue:83 47 225;--cm-status:#b5c4f5;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);border:1px solid #293047;border-radius:4px;background:#080b12;color:#d4daeb;margin-bottom:var(--gap);font-variant-numeric:tabular-nums;min-width:0}
+.collector-monitor>section{padding:8px 16px;min-width:0}
+.collector-monitor>section+section{border-left:1px solid #293047}
+.collector-monitor .cm-axis{font-size:11px;color:#a5afca}
+.collector-monitor .cm-axis{display:flex;justify-content:space-between;padding-left:112px;height:28px;align-items:center;font-family:monospace}
+.collector-monitor .cm-heat-scroll{height:112px;overflow:auto;scrollbar-width:none}
+.collector-monitor .cm-heat-row{height:28px;display:grid;grid-template-columns:100px minmax(0,1fr);gap:12px;align-items:center;font-size:12px}
+.collector-monitor .cm-heat-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.collector-monitor .cm-cells{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));gap:3px;min-width:0}
+.collector-monitor .cm-cell{height:18px;position:relative;display:grid;place-items:center;font:10px/1 monospace;color:#172343;border-radius:1px}
+.collector-monitor .hit{--cm-alpha:.68}
+.collector-monitor .zero{--cm-alpha:.52}
+.collector-monitor .warning{--cm-alpha:.34}
+.collector-monitor .failure{--cm-alpha:.22}
+.collector-monitor .idle{--cm-alpha:.07}
+.collector-monitor .running{--cm-alpha:.43}
+.collector-monitor .unknown{--cm-alpha:.15}
+/* One blue pigment, alpha-only depth. Keep labels opaque and readable. */
+.collector-monitor .cm-cell,.collector-monitor .cm-cell i{background:rgb(var(--cm-blue) / var(--cm-alpha,.07));color:#f3f5ff}
+.collector-monitor .waiting{color:#b4bfd8}
+.collector-monitor .cm-cell i{position:absolute;inset:auto 0 0;height:3px}
+.collector-monitor .cm-table-scroll{height:140px;overflow:auto;scrollbar-width:none}
+.screen .collector-monitor table{width:100%;min-width:520px;table-layout:fixed;border-collapse:separate;border-spacing:0;background:transparent}
+.screen .collector-monitor th,.screen .collector-monitor td{height:28px;padding:4px 6px;border:0;border-bottom:1px solid #20283b;background:#080b12;font-size:12px;line-height:19px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit}
+.screen .collector-monitor th{font-weight:400}.screen .collector-monitor thead th{position:sticky;top:0;z-index:1;color:#a5afca;font-size:11px}.screen .collector-monitor td.cm-state-success{color:inherit}.screen .collector-monitor td.cm-state-warning{color:inherit}.screen .collector-monitor td.cm-state-failure{color:inherit}
+.screen .collector-monitor th:nth-child(1){width:20%}.screen .collector-monitor th:nth-child(2){width:18%}.screen .collector-monitor th:nth-child(3){width:23%}.screen .collector-monitor th:nth-child(4){width:18%}.screen .collector-monitor th:nth-child(5){width:21%}
+.collector-monitor .cm-empty{font-size:12px;color:#a5afca}
+:fullscreen .screen>.collector-monitor{grid-area:collector;margin:0}
+@media(max-width:1100px){.screen .collector-monitor{grid-template-columns:1fr}.collector-monitor>section+section{border-left:0;border-top:1px solid #293047}}
+@media(max-width:600px){.collector-monitor>section{padding:12px}.collector-monitor .cm-cells{gap:2px}.collector-monitor .cm-cell{font-size:0}.collector-monitor .cm-heat-row{grid-template-columns:72px minmax(0,1fr);gap:8px}.collector-monitor .cm-axis{padding-left:80px}}
+.collector-monitor .cm-heat-scroll:focus-visible,.collector-monitor .cm-table-scroll:focus-visible{outline:2px solid #8ca9ff;outline-offset:2px}
+
+@supports not (scrollbar-width:none){.collector-monitor .cm-heat-scroll::-webkit-scrollbar,.collector-monitor .cm-table-scroll::-webkit-scrollbar{display:none;width:0;height:0}}
+
+/* Match terminal blue without applying alert-box styling to table cells. */
+.screen{--terminal-label:#9074eb}
+.collector-monitor .cm-heat-row>span{color:#d4daeb}
+.screen .collector-monitor tbody th{color:inherit}
+.screen .followup-panels h2,.screen .business-followup tbody td:nth-child(2){color:var(--terminal-label)}
+/* Recycling rows must not trigger the browser's independent scroll anchoring. */
+.screen .auto-scroll,.screen .cm-table-scroll,.screen .cm-heat-scroll,.screen .terminal-feed{overflow-anchor:none;scroll-behavior:auto;scrollbar-width:none}

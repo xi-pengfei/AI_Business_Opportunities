@@ -1,6 +1,11 @@
 export type Fragment = { index: number; text: string; start: number; end: number; before: string; after: string };
 export type Item = {
   id: string;
+  related_item_id?: string;
+  relation_kind?: string;
+  source_urls?: string[];
+  quality_status?: string;
+  ai_review?: {decision?:string;reason?:string;evidence?:string;error?:string;model?:string;deduplication?:{relation:string;reason:string}};
   source_type?: string;
   source_name?: string;
   business_status?: string;
@@ -32,6 +37,9 @@ export type Snapshot = {
   information_sources: Record<string, number>;
   information_flows: {source:string;target:string;value:number}[];
   backlog_history: number[][];
+  search_hit_history?: number[][];
+  search_hit_total?: number;
+  search_hit_success?: number;
   active_item_ids: string[];
   pending_count: number;
   backlog_count: number;
@@ -51,6 +59,10 @@ export type Snapshot = {
     query: string;
     state: string;
     next_run_at: number;
+    provider: string;
+    last_success_at: number | null;
+    next_action_at: number;
+    history: {start:number; results:number|null; successes:number; failures:number; warnings:number; running:number}[];
     continuous: boolean;
     search_page: number;
     search_engine: string;
@@ -80,6 +92,7 @@ export type Snapshot = {
   events: Execution[];
 };
 export type Rule = {
+  search_spec?: {product?:string;synonyms?:string[];actions?:string[];regions?:string[];retired?:boolean};
   id: string;
   name: string;
   query: string;
@@ -132,6 +145,6 @@ export const errors: Record<string, string> = {
 export const clock = (t: number) =>
   new Date(t * 1000).toLocaleTimeString("zh-CN", { hour12: false });
 
-export const sourceName = (i: Item) => i.source_name || ({public_tender:'网络商机',social_demand:'小红书',customer_watch:'客户监测'} as Record<string,string>)[i.source_type || 'public_tender'] || '网络商机';
-export const businessState = (i: Item) => ({collected:'已采集',waiting_claim:'待认领',claimed:'已认领',sent:'已推送',sending:'推送中',unknown:'推送结果待核实',failed:'推送失败',restored:'已恢复，回执待核实'} as Record<string,string>)[i.business_status || 'collected'] || '已采集';
+export const sourceName = (i: Item) => i.source_name || ({public_tender:'商机',social_demand:'小红书',customer_watch:'监控'} as Record<string,string>)[i.source_type || 'public_tender'] || '商机';
+export const businessState = (i: Item) => ({merged:'已合并',review_pending:'待AI审核',review_required:'待核实',collected:'已采集',waiting_claim:'待认领',claimed:'已认领',sent:'已推送',sending:'推送中',unknown:'推送结果待核实',failed:'推送失败',restored:'已恢复，回执待核实'} as Record<string,string>)[i.business_status || 'collected'] || '已采集';
 export const fullTime = (t?:number) => t ? new Date(t*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '—';

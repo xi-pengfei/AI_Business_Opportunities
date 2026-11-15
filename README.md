@@ -72,3 +72,7 @@ cd .. && python3 scripts/smoke.py
 公开仓库：https://github.com/xi-pengfei/AI_Business_Opportunities 。已获用户授权进行本地提交和公开推送，功能分支 `codex/<topic>`。密钥、账号会话、客户资料、数据库、采集内容和运行日志不得入库。
 
 小红书扫码、关键词配置和部署说明见 [小红书需求采集](docs/XIAOHONGSHU.md)。
+
+## 修改 AI 提示词
+
+提示词集中在项目根目录隐藏文件夹 `.ai-settings/`，各用途独立命名，详见 [.ai-settings/README.md](.ai-settings/README.md)。文件保存后下一次 AI 调用生效，不需要改代码、重建镜像或重启。Docker 部署必须携带此目录，Compose 已只读挂载到所有后端服务。不要改掉模型输出字段契约；缺失/空白文件会阻止对应AI判断，不会默认通过。

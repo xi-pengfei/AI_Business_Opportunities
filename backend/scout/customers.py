@@ -26,11 +26,11 @@ def queries(customer):
     seeds = [f'"{n}"' for n in names]
     short = customer.aliases[0] if customer.aliases else customer.name
     seeds += [f'"{short}" {topic}' for topic in ("采购 招标", "扩产 产能", "信息化 智能制造")]
-    result = []
-    for seed in seeds:
-        if len("\n".join([*result, seed])) <= 500:
-            result.append(seed)
-    return "\n".join(result)
+    for url in getattr(customer, 'reference_urls', []) or []:
+        host = urlsplit(url).hostname
+        if host:
+            seeds.append(f'"{short}" site:{host}')
+    return "\n".join(dict.fromkeys(seeds))
 
 
 def signal_window(now=None):
@@ -75,7 +75,9 @@ def save_signal(db, task):
     normalized = clean_text(raw)
     if not normalized:
         raise ProviderError("empty_content")
-    quality, reason = classify(customer, p["title"], raw, p.get("published_at"), url)
+    from types import SimpleNamespace
+    identity = SimpleNamespace(**p["customer_snapshot"]) if p.get("customer_snapshot") else customer
+    quality, reason = classify(identity, p["title"], raw, p.get("published_at"), url)
     if reason:
         emit(db, task, "customer.discarded", customer_id=customer.id, reason=reason)
         return {"discarded": True, "reason": reason}
@@ -87,7 +89,8 @@ def save_signal(db, task):
     existing = db.scalar(select(CustomerSignal).where(CustomerSignal.customer_id == customer.id,
         (CustomerSignal.url == url) | (CustomerSignal.content_hash == fingerprint)).limit(1))
     if existing and not (existing.quality_reason == "unverified_date" and existing.content_hash == fingerprint and quality["quality_status"] == "active"):
-        sync_customer_item(db, existing)
+        item = sync_customer_item(db, existing)
+        item.source_urls = list(dict.fromkeys([item.url, *item.source_urls, url]))
         emit(db, task, "customer.duplicate", customer_id=customer.id, signal_id=existing.id)
         return {"signal_id": existing.id, "duplicate": True}
     # Evidence namespace intentionally differs from public tender's URL identity.
@@ -106,7 +109,7 @@ def save_signal(db, task):
         existing.fragments = quality["fragments"]
         existing.created_at = time.time()
         sync_customer_item(db, existing)
-        emit(db, task, "item.created", item_id=existing.id)
+        emit(db, task, "item.filtered", item_id=existing.id, reason="ai_review_required")
         emit(db, task, "customer.created", customer_id=customer.id, signal_id=existing.id, date_verified=True)
         return {"signal_id": existing.id, "duplicate": False, "quality_status": "active"}
     signal = CustomerSignal(customer_id=customer.id, document_id=doc.id, url=url,
@@ -116,8 +119,7 @@ def save_signal(db, task):
     db.add(signal)
     db.flush()
     sync_customer_item(db, signal)
-    if signal.quality_status == "active":
-        emit(db, task, "item.created", item_id=signal.id)
+    # Visible publication is emitted after AI routes news versus demand.
     emit(db, task, "customer.created" if signal.quality_status == "active" else "customer.filtered",
          customer_id=customer.id, signal_id=signal.id)
     return {"signal_id": signal.id, "duplicate": False, "quality_status": signal.quality_status}
@@ -130,7 +132,7 @@ def customer_records(db):
         newest = db.scalar(select(CustomerSignal).where(CustomerSignal.customer_id == customer.id,
             *signal_window()).order_by(CustomerSignal.created_at.desc()).limit(1))
         output.append({"id": customer.id, "name": customer.name, "aliases": customer.aliases,
-            "website": customer.website, "identity_source": customer.identity_source,
+            "website": customer.website, "reference_urls": customer.reference_urls, "identity_source": customer.identity_source,
             "rule_id": rule.id, "enabled": rule.enabled,
             "query": latest.payload.get("query") if latest else None,
             "state": latest.status if latest else "queued",

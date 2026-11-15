@@ -2,7 +2,7 @@
 
 import time
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from scout.models import Document, Event, Item, Task
 
@@ -16,10 +16,11 @@ def unique_items(demo):
         select(
             Item.id,
             func.row_number()
-            .over(partition_by=(Item.source_type, Item.url), order_by=(Item.created_at.asc(), Item.id))
+            .over(partition_by=(Item.source_type, Item.url, case((Item.relation_kind.in_(("update", "distinct")), Item.id), else_="original")), order_by=(Item.created_at.asc(), Item.id))
             .label("position"),
         )
-        .where(Item.is_demo == demo, Item.quality_status == "active")
+        .where(Item.is_demo == demo, Item.quality_status == "active", (Item.relation_kind.is_(None)) | (Item.relation_kind != "duplicate"),
+               (Item.is_demo.is_(True)) | ((Item.source_type == "customer_watch") & (Item.information_kind == "customer_update")) | (Item.ai_review["decision"].as_string() == "buyer_demand"))
         .subquery()
     )
     return select(Item).join(ranked, Item.id == ranked.c.id).where(ranked.c.position == 1)
@@ -102,11 +103,12 @@ def chart_facts(db, demo, start):
 def collector_status(db, demo, role):
     from scout.models import Rule
 
+    now = time.time()
     output = []
     for rule in db.scalars(
         select(Rule).where(
-            Rule.enabled.is_(True), Rule.source_type.in_(("public_tender", "social_demand")), Rule.provider == "demo" if demo else Rule.provider != "demo"
-        )
+            Rule.enabled.is_(True), Rule.source_type.in_(("public_tender", "social_demand", "customer_watch")), Rule.provider == "demo" if demo else Rule.provider != "demo"
+        ).order_by(Rule.created_at, Rule.id)
     ):
         latest = db.scalar(
             select(Task)
@@ -136,6 +138,9 @@ def collector_status(db, demo, role):
                 "name": rule.name if role == "admin" else "采集规则",
                 "query": latest.payload.get("query", "") if latest and role == "admin" else "",
                 "state": state,
+                "provider": rule.provider,
+                "last_success_at": db.scalar(select(func.max(Task.updated_at)).where(Task.rule_id == rule.id, Task.kind == "search", Task.is_demo == demo, Task.status == "succeeded")),
+                "next_action_at": latest.available_at if latest and state == "retry_wait" else rule.next_run_at,
                 "error_code": latest.error_code if latest else None,
                 "next_run_at": rule.next_run_at,
                 "continuous": rule.interval_seconds == 0,
@@ -163,6 +168,10 @@ def collector_status(db, demo, role):
                 "max_results": rule.max_results,
             }
         )
+    from scout.collector_history import collector_history
+    histories = collector_history(db, [row["id"] for row in output], demo, now)
+    for row in output:
+        row["history"] = histories[row["id"]]
     return output
 
 

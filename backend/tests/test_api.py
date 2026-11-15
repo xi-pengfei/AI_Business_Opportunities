@@ -85,6 +85,7 @@ def test_chart_days_dedupe_and_filtered_evidence_permissions(client, database, m
             db.flush()
             db.add(Item(document_id=doc.id, title="私有标题", url=url, text="私有内容",
                         contacts=[{"type": "email", "value": "private@example.org"}],
+                        ai_review={"decision": "buyer_demand"},
                         created_at=stamp, is_demo=demo))
     snapshot = client.get("/api/v1/display/snapshot").json()
     assert len(snapshot["discovery_calendar"]) == 90
@@ -116,7 +117,7 @@ def test_feed_cursor_and_map_exclude_archived_records(client, database):
             db.add(doc)
             db.flush()
             db.add(Item(id=key, document_id=key, title="湖北采购", url=doc.url, text="建设系统",
-                        created_at=100, is_demo=False, region="湖北", region_evidence="湖北采购",
+                        information_kind="opportunity", ai_review={"decision": "buyer_demand"}, created_at=100, is_demo=False, region="湖北", region_evidence="湖北采购",
                         quality_status="archived" if archived else "active"))
     feed = client.get("/api/v1/display/feed?after=100&after_id=a").json()
     assert [i["id"] for i in feed["items"]] == ["b"]
@@ -128,3 +129,34 @@ def test_feed_cursor_and_map_exclude_archived_records(client, database):
     assert len(client.get("/api/v1/items").json()) == 2
     assert client.get("/api/v1/display/items?start=0&end=101&region=湖北").json()["total"] == 2
     assert client.get("/api/v1/display/items?start=0&end=101&region=广东").json()["total"] == 0
+
+
+def test_edit_network_rule_preserves_enabled_state_and_revisions(client, database):
+    from scout.models import Rule
+    r = client.post('/api/v1/rules', json={'name':'原名称','query':'ERP 采购公告','provider':'searxng','enabled':True}).json()
+    edited = client.patch('/api/v1/rules/'+r['id'],json={'name':'MES 商机','query':'MES 招标公告\nMES 采购意向','provider':'searxng'}).json()
+    assert edited['enabled'] is True
+    assert edited['version'] == r['version']+1
+    assert edited['query'].splitlines() == ['MES 招标公告','MES 采购意向']
+    client.patch('/api/v1/rules/'+r['id'],json={'enabled':False})
+    assert client.patch('/api/v1/rules/'+r['id'],json={'name':'停止后修改'}).json()['enabled'] is False
+    assert client.patch('/api/v1/rules/'+r['id'],json={'query':'  '}).status_code == 422
+    with database() as db:
+        assert db.get(Rule,r['id']).query == edited['query']
+
+
+def test_new_network_config_not_blocked_by_old_provider_auth_failure(client, database):
+    from scout.models import Rule
+    r = client.post('/api/v1/rules', json={'name':'缺密钥','query':'ERP 采购公告','provider':'tavily','enabled':True}).json()
+    service.schedule_due()
+    with database.begin() as db:
+        old = db.scalar(select(Task).where(Task.rule_id==r['id']))
+        old.status = 'action_required'
+    client.patch('/api/v1/rules/'+r['id'],json={'provider':'searxng'})
+    service.schedule_due()
+    with database() as db:
+        tasks = db.scalars(select(Task).where(Task.rule_id==r['id'])).all()
+        assert len(tasks) == 2
+        new = next(t for t in tasks if t.status=='queued')
+        assert new.payload['provider'] == 'searxng'
+        assert new.config_version == db.get(Rule,r['id']).version

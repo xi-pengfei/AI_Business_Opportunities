@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     dingtalk_robot_code: str = ""
     dingtalk_conversation_id: str = ""
     dingtalk_group_name: str = "钉钉群"
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-flash"
     allow_demo: bool = False
     lease_seconds: int = Field(default=180, ge=150)
     max_attempts: int = Field(default=3, ge=1, le=10)

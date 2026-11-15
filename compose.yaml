@@ -5,6 +5,9 @@ x-backend: &backend
   environment:
     DATABASE_URL: postgresql+psycopg://scout:${POSTGRES_PASSWORD:?Run scripts/setup.sh first}@db:5432/scout
     REDIS_URL: redis://redis:6379/0
+    AI_SETTINGS_DIR: /app/.ai-settings
+  volumes:
+    - ./.ai-settings:/app/.ai-settings:ro
   depends_on:
     migrate:
       condition: service_completed_successfully
@@ -69,6 +72,9 @@ services:
   social-worker:
     <<: *backend
     command: ["celery", "-A", "scout.worker:app", "worker", "-Q", "social", "--concurrency=1", "--loglevel=WARNING"]
+  ai-reviewer:
+    <<: *backend
+    command: ["python", "-m", "scout.ai_review"]
   dispatcher:
     <<: *backend
     command: ["python", "-m", "scout.dispatcher"]

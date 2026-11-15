@@ -65,7 +65,7 @@ def accept_claim(data, config, sessions=Session, now=None):
         )
         if row is None:
             return "unknown_item"
-        if db.get(Item, row.item_id).source_type == "customer_watch":
+        if db.get(Item, row.item_id).information_kind == "customer_update":
             return "not_claimable"
         if row.status == "claimed":
             return "already_claimed"

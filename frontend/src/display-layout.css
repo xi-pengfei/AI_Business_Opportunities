@@ -1,5 +1,5 @@
 /* Light workspace, explicitly dark native fullscreen. */
-:root {color-scheme:light;--bg:#f5f7fa;--panel:#fff;--panel-2:#f5f7fa;--surface:#fff;--surface-2:#eef3f7;--ink:#23313f;--ink-2:#475668;--ink-3:#647386;--ink-4:#738091;--line:#e2e8ef;--line-strong:#cbd5df;--accent:#147f95;--accent-soft:#147f95;--accent-tint:#eaf6f8;--void:#fff;--warn:#a77315;--danger:#bb4657;--success:#297b58;font-family:'PingFang SC','Microsoft YaHei',system-ui,sans-serif;}
+:root {color-scheme:light;--bg:#f5f7fa;--panel:#fff;--panel-2:#f5f7fa;--surface:#fff;--surface-2:#eef3f7;--ink:#23313f;--ink-2:#475668;--ink-3:#647386;--ink-4:#738091;--line:#e2e8ef;--line-strong:#cbd5df;--accent:#147f95;--accent-soft:#147f95;--accent-dim:#d3ebf0;--accent-tint:#eaf6f8;--void:#fff;--warn:#a77315;--danger:#bb4657;--success:#297b58;font-family:'PingFang SC','Microsoft YaHei',system-ui,sans-serif;}
 body {background:var(--bg);color:var(--ink);}
 .screen,.workspace {background:var(--bg);color:var(--ink);width:100%;max-width:none;margin:0;padding:20px;}
 .screen {--gap:16px;font-size:14px;}
@@ -42,7 +42,7 @@ body {background:var(--bg);color:var(--ink);}
 .screen .information-flow-table.fragment-table th:nth-child(5){width:10%!important;}
 .screen .information-flow-table.fragment-table th:nth-child(6),.screen .information-flow-table.fragment-table th:nth-child(7){width:10%!important;}
 .screen .information-flow-table.fragment-table td {min-width:0;max-width:none;}
-.screen th,.screen td {padding:9px 6px;font-size:12px;line-height:1.6;border-color:var(--line);color:var(--ink-2);font-variant-numeric:tabular-nums;}
+.screen th,.screen td {padding:5px 6px;font-size:12px;line-height:1.5;border-color:var(--line);color:var(--ink-2);font-variant-numeric:tabular-nums;}
 .screen th {font-weight:400;color:var(--ink-3);background:var(--panel-2);}
 .screen .text-button {font:inherit;color:var(--ink);max-width:100%;white-space:nowrap!important;text-overflow:ellipsis;overflow:hidden;display:block;text-align:left;}
 .screen .fragment-tag,.workspace .fragment-tag {background:var(--surface-2);color:var(--ink-2);border-color:var(--line);font:inherit;font-size:12px;}
@@ -113,3 +113,20 @@ body,.workspace {min-height:100dvh;}
 .workspace .detail pre {background:var(--surface-2);color:var(--ink-2);}
 .workspace .error,.login .error,.screen:not(.is-fullscreen) .error {background:#fff1f2;color:#983a48;border-color:#cf6b7c;}
 .workspace .success,.screen:not(.is-fullscreen) .success {background:#edf8f1;color:#286949;border-color:#72ae8c;}
+
+/* Compact information rows: preserve readable type and full detail text. */
+.screen .library td,
+.screen .followup-panels td {padding:4px 6px;line-height:1.5;vertical-align:middle;}
+.screen .library td .text-button,
+.screen .followup-panels td .text-button {font-size:12px;line-height:1.5;min-height:24px;padding:2px 0;}
+.screen .library .fragment-tag,
+.screen .followup-panels .fragment-tag {min-height:24px;padding:2px 6px;line-height:18px;}
+.screen .library .fragment-tags,
+.screen .followup-panels .fragment-tags {gap:4px;}
+.screen .customer-followup .fragment-tags {margin-top:2px;}
+.screen .library > h2,
+.screen .followup-panels > .panel > h2 {margin-bottom:6px;padding-bottom:6px;}
+
+.screen .map-heading { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin-bottom:10px; }
+.screen .map-heading h2 { margin:0; }
+.screen .map-heading > span { font-size:12px; color:inherit; font-variant-numeric:tabular-nums; }

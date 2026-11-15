@@ -132,6 +132,11 @@ def test_search_to_terminal_feed_is_deduplicated_and_pushed_once(client, databas
         assert db.scalar(select(func.count()).select_from(Item)) == 1
         assert "note_token" not in db.get(Task, ingest_id).payload
         assert db.scalar(select(Item)).information_kind == "demand"
+    assert client.get("/api/v1/display/feed?after=0").json()["items"] == []
+    from scout.ai_review import tick as review_tick
+    from scout.config import Settings
+    review_tick(Settings(_env_file=None, deepseek_api_key="test-key"), database,
+                reviewer=lambda *args: {"decision": "buyer_demand", "reason": "买方需求", "evidence": RAW})
     assert (
         client.get("/api/v1/display/feed?after=0").json()["items"][0]["source_type"]
         == "social_demand"

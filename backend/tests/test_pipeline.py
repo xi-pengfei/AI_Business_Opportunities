@@ -243,7 +243,7 @@ def test_continuous_rotates_queries_waits_for_ingest_and_stops(database):
         assert db.scalar(select(func.count()).select_from(Task).where(Task.kind == "search")) == 2
 
 
-def test_same_url_changed_excerpt_does_not_create_second_item(database):
+def test_same_url_changed_excerpt_preserves_new_evidence(database):
     task_id = make_task(database)
     drain(database, task_id)
     with database.begin() as db:
@@ -263,8 +263,8 @@ def test_same_url_changed_excerpt_does_not_create_second_item(database):
         tid = task.id
     service.execute(tid)
     with database() as db:
-        assert db.scalar(select(func.count()).select_from(Item)) == 1
-        assert db.get(Task, tid).result["duplicate"]
+        assert db.scalar(select(func.count()).select_from(Item)) == 2
+        assert not db.get(Task, tid).result["duplicate"]
 
 
 def test_cross_url_identical_content_does_not_create_another_item(database):

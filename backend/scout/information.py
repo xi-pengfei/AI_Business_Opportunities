@@ -2,13 +2,13 @@
 
 from scout.models import Delivery, Document, Item
 
-SOURCES = {"public_tender": "网络商机", "social_demand": "小红书", "customer_watch": "客户监测"}
+SOURCES = {"public_tender": "商机", "social_demand": "小红书", "customer_watch": "监控"}
 
 
 def item_record(db, item, admin=True):
     row = {c.name: getattr(item, c.name) for c in item.__table__.columns}
     delivery = db.get(Delivery, item.id)
-    news = item.source_type == "customer_watch"
+    news = item.information_kind == "customer_update"
     state = "collected"
     if delivery:
         state = {
@@ -21,6 +21,10 @@ def item_record(db, item, admin=True):
             "failed": "failed",
             "restored": "restored",
         }.get(delivery.status, "collected")
+    if item.quality_status in ("review_pending", "review_required"):
+        state = item.quality_status
+    if item.quality_status == "merged":
+        state = "merged"
     row.update(
         source_name=SOURCES.get(item.source_type, item.source_type),
         business_status=state,
@@ -61,7 +65,8 @@ def sync_customer_item(db, signal):
 
     doc = db.get(Document, signal.document_id)
     item = db.scalar(select(Item).where(Item.id == signal.id))
-    if item is None:
+    is_new = item is None
+    if is_new:
         item = Item(
             id=signal.id,
             document_id=doc.id,
@@ -74,12 +79,15 @@ def sync_customer_item(db, signal):
             is_demo=False,
         )
         db.add(item)
+    if not is_new and item.document_id == doc.id:
+        return item
     item.document_id = doc.id
     item.fragments = signal.fragments
     item.category = signal.topic
     item.published_at = signal.published_at
-    item.quality_status = signal.quality_status
-    item.quality_reason = signal.quality_reason
+    item.quality_status = "review_pending" if signal.quality_status == "active" else signal.quality_status
+    item.ai_review = {}
+    item.quality_reason = "ai_review_required" if signal.quality_status == "active" else signal.quality_reason
     item.created_at = signal.created_at
     db.flush()
     return item

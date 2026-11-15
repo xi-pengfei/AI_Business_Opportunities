@@ -55,6 +55,12 @@ def start_rule(db, rule, key, scheduled=False):
         if lane is None:
             return None
     query = lane.query if lane else queries[rounds % len(queries)]
+    customer_snapshot = None
+    if rule.customer_id:
+        from scout.models import Customer
+        customer = db.get(Customer, rule.customer_id)
+        if customer:
+            customer_snapshot = {"name": customer.name, "aliases": customer.aliases, "website": customer.website}
     task = enqueue(
         db,
         kind="search",
@@ -63,6 +69,7 @@ def start_rule(db, rule, key, scheduled=False):
             "provider": rule.provider,
             "source_type": rule.source_type or "public_tender",
             **({"customer_id": rule.customer_id} if rule.customer_id else {}),
+            **({"customer_snapshot": customer_snapshot} if customer_snapshot else {}),
             "max_results": rule.max_results,
             "page": lane.page if lane else 1,
             **({"engine":lane.engine,"search_cursor_id":lane.id} if lane else {}),
@@ -98,15 +105,17 @@ def save_item(db, task):
         from scout.customers import save_signal
         return save_signal(db, task)
     url = canonical_url(p["url"])
-    existing = db.scalar(select(Item).where(Item.url == url, Item.is_demo == task.is_demo).limit(1))
-    if existing:
-        emit(db, task, "item.duplicate", item_id=existing.id)
-        return {"item_id": existing.id, "duplicate": True}
     raw = p["raw_content"]
     text = clean_text(raw)
     if not text:
         raise ProviderError("empty_content")
     fingerprint = hashlib.sha256(text.encode()).hexdigest()
+    existing = db.scalar(select(Item).join(Document, Item.document_id == Document.id).where(
+        Item.url == url, Item.is_demo == task.is_demo, Document.content_hash == fingerprint,
+        Item.information_kind.in_(("opportunity", "demand"))).limit(1))
+    if existing:
+        emit(db, task, "item.duplicate", item_id=existing.id)
+        return {"item_id": existing.id, "duplicate": True}
     removed = db.scalar(select(RemovedEvidence).where(
         (RemovedEvidence.url_hash == hashlib.sha256(url.encode()).hexdigest()) |
         (RemovedEvidence.content_hash == fingerprint)).limit(1)) if not task.is_demo and p.get("source_type", "public_tender") == "public_tender" else None
@@ -122,12 +131,17 @@ def save_item(db, task):
         raise ProviderError("source_policy_not_connected", True)
     policy = describe_social_demand if p.get("source_type") == "social_demand" else describe_public_tender
     quality = (describe if task.is_demo else policy)(p["title"], raw, p.get("published_at"))
+    if not task.is_demo and p.get("source_type") == "social_demand" and quality["quality_status"] == "active":
+        # AI sees every fresh social candidate, including ones regex would reject.
+        quality.update(information_kind="demand", quality_status="review_pending", quality_reason="ai_review_required")
     if not task.is_demo and quality["information_kind"] == "bulletin":
         from scout.purge_bulletins import discarded_payload
 
         task.payload = {**discarded_payload(p.get("provider")), "source_type": p.get("source_type", "public_tender"), **({"note_id": p["note_id"]} if p.get("note_id") else {})}
         emit(db, task, "item.discarded", reason="not_opportunity")
         return {"discarded": True, "reason": "not_opportunity"}
+    if not task.is_demo and quality["quality_status"] == "active" and quality["information_kind"] in ("opportunity", "demand"):
+        quality.update(quality_status="review_pending", quality_reason="ai_review_required")
     if task.is_demo and quality["quality_reason"] == "unverified_date":
         quality.update(quality_status="active", quality_reason=None)
     fingerprint = hashlib.sha256(text.encode()).hexdigest()
@@ -136,11 +150,13 @@ def save_item(db, task):
         lock_key = int.from_bytes(hashlib.sha256(f"{task.is_demo}|{fingerprint}".encode()).digest()[:8], "big", signed=True)
         db.execute(sql_text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
     duplicate = db.scalar(select(Item).join(Document, Item.document_id == Document.id).where(
-        Document.content_hash == fingerprint, Item.is_demo == task.is_demo).limit(1))
+        Document.content_hash == fingerprint, Item.is_demo == task.is_demo,
+        Item.information_kind.in_(("opportunity", "demand"))).limit(1))
     if duplicate:
+        duplicate.source_urls = list(dict.fromkeys([duplicate.url, *duplicate.source_urls, url]))
         emit(db, task, "item.duplicate", item_id=duplicate.id)
         return {"item_id": duplicate.id, "duplicate": True}
-    identity = hashlib.sha256(f"{task.is_demo}|{url}".encode()).hexdigest()
+    identity = hashlib.sha256(f"{task.is_demo}|{url}|{fingerprint}".encode()).hexdigest()
     # Savepoint handles concurrent workers seeing the same URL/content.
     from sqlalchemy.exc import IntegrityError
 
@@ -217,7 +233,7 @@ def finish(task_id, token, results=None, error=None, prepared=None):
                         enqueue(
                             db,
                             kind="ingest",
-                            payload={**result, "provider": task.payload["provider"], "source_type": task.payload.get("source_type","public_tender"), **({"customer_id": task.payload["customer_id"]} if task.payload.get("customer_id") else {})},
+                            payload={**result, "provider": task.payload["provider"], "source_type": task.payload.get("source_type","public_tender"), **({"customer_id": task.payload["customer_id"], "customer_snapshot": task.payload.get("customer_snapshot")} if task.payload.get("customer_id") else {})},
                             key=f"child:{task.id}:{i}",
                             parent=task,
                         )
@@ -304,7 +320,7 @@ def schedule_due():
             )
             blocked = db.scalar(
                 select(Task.id).where(
-                    (Task.rule_id.in_(select(Rule.id).where(Rule.provider == "xiaohongshu")) if rule.provider == "xiaohongshu" else Task.rule_id == rule.id), Task.status == "action_required"
+                    (Task.rule_id.in_(select(Rule.id).where(Rule.provider == "xiaohongshu")) if rule.provider == "xiaohongshu" else (Task.rule_id == rule.id) & (Task.config_version == rule.version)), Task.status == "action_required"
                 )
             )
             if blocked:

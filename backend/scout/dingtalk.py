@@ -49,12 +49,12 @@ class DingTalk:
 
     def send(self, item, delivery):
         captured = datetime.fromtimestamp(item.created_at, ZONE).strftime("%Y-%m-%d %H:%M:%S")
-        news = item.source_type == "customer_watch"
+        news = item.information_kind == "customer_update"
         content = "\n".join(
             [
-                "客户监测资讯" if news else f"商机编号：BO-{delivery.claim_code}",
+                "监控资讯" if news else f"商机编号：BO-{delivery.claim_code}",
                 item.title[:500],
-                "信息来源：" + {"social_demand": "小红书", "customer_watch": "客户监测"}.get(item.source_type, "网络商机"),
+                "信息来源：" + {"social_demand": "小红书", "customer_watch": "监控"}.get(item.source_type, "商机"),
                 *[f["text"] for f in item.fragments],
                 "原始网址：" + item.url[:2500],
                 "发布时间：" + (item.published_at or "未提供"),
@@ -89,6 +89,19 @@ def configured(config):
     )
 
 
+def send_error(exc):
+    """Persist a diagnostic without response bodies, URLs or credentials."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"send_http_{exc.response.status_code}"
+    if isinstance(exc, httpx.TimeoutException):
+        return "send_timeout"
+    if isinstance(exc, httpx.ConnectError):
+        return "send_connection_error"
+    if isinstance(exc, ValueError) and str(exc) in {"missing_message_id", "dingtalk_rejected"}:
+        return str(exc)
+    return "send_result_unknown"
+
+
 def tick(config, transport, sessions=Session, now=None):
     now = now or time.time()
     if not config.dingtalk_enabled or not configured(config):
@@ -116,7 +129,8 @@ def tick(config, transport, sessions=Session, now=None):
             gate.current_item_id = None
         item = db.scalar(
             pending_items(False, now)
-            .where(Item.information_kind.in_(("opportunity", "demand")), ~Item.id.in_(select(Delivery.item_id)))
+            .where(Item.information_kind.in_(("opportunity", "demand")), ~Item.id.in_(select(Delivery.item_id)),
+                   Item.ai_review["decision"].as_string() == "buyer_demand")
             .order_by(Item.created_at, Item.id)
             .limit(1)
         )
@@ -142,11 +156,11 @@ def tick(config, transport, sessions=Session, now=None):
             delivery.sent_at = delivery.sent_at or now
             if delivery.status != "claimed":
                 delivery.status = "accepted"
-        except Exception:
+        except Exception as exc:
             db.refresh(delivery)
             if delivery.status != "claimed":
                 delivery.status = "unknown"
-                delivery.error_code = "send_result_unknown"
+                delivery.error_code = send_error(exc)
         db.commit()
         return delivery.status
 
@@ -171,7 +185,7 @@ def tick_news(config, transport, sessions=Session, now=None):
             if current and current.status == "sending":
                 current.status, current.error_code = "unknown", "interrupted_send"
             gate.current_item_id = None
-        item = db.scalar(unique_items(False).where(Item.source_type == "customer_watch", *current_window(now),
+        item = db.scalar(unique_items(False).where(Item.source_type == "customer_watch", Item.information_kind == "customer_update", *current_window(now),
                          ~Item.id.in_(select(Delivery.item_id))).order_by(Item.created_at, Item.id).limit(1))
         if item is None:
             db.commit()
@@ -185,8 +199,8 @@ def tick_news(config, transport, sessions=Session, now=None):
         try:
             delivery.message_id = transport.send(item, delivery)
             delivery.sent_at, delivery.status = now, "sent"
-        except Exception:
-            delivery.status, delivery.error_code = "unknown", "send_result_unknown"
+        except Exception as exc:
+            delivery.status, delivery.error_code = "unknown", send_error(exc)
         # Unknown deliveries stay recorded and are never automatically resent.
         gate.current_item_id = None
         db.commit()

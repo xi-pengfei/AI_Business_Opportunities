@@ -47,6 +47,7 @@ def seed(database):
                     created_at=100 + n,
                     published_at="1970-01-01",
                     information_kind="opportunity",
+                    ai_review={"decision": "buyer_demand"},
                 )
             )
         db.commit()
@@ -303,7 +304,7 @@ def test_customer_news_does_not_wait_for_or_accept_claims(database):
         code = d.claim_code
         row = item_record(db, db.get(Item, "item-1"))
         assert row["business_status"] == "sent" and row["claimed_by"] is None
-        assert row["source_name"] == "客户监测"
+        assert row["source_name"] == "监控"
     result = accept_claim(
         {
             "conversationType": "2",
@@ -344,6 +345,7 @@ def test_customer_broadcast_message_has_source_but_no_claim_instruction(database
     with database() as db:
         item = db.get(Item, "item-0")
         item.source_type = "customer_watch"
+        item.information_kind = "customer_update"
         delivery = Delivery(
             item_id=item.id, conversation_id="group", robot_code="robot", claim_code="abcdef123456"
         )
@@ -354,5 +356,33 @@ def test_customer_broadcast_message_has_source_but_no_claim_instruction(database
         )
         assert transport.send(item, delivery) == "message"
         content = json.loads(captured[0]["msgParam"])["content"]
-        assert "信息来源：客户监测" in content
+        assert "信息来源：监控" in content
         assert "BO-" not in content and "认领方式" not in content
+
+
+def test_monitor_opportunity_message_requires_claim(database):
+    seed(database)
+    with database() as db:
+        item = db.get(Item, "item-0")
+        item.source_type = "customer_watch"
+        item.information_kind = "opportunity"
+        delivery = Delivery(item_id=item.id, conversation_id="group", robot_code="robot", claim_code="abc123")
+        transport = DingTalk(config())
+        captured = []
+        transport.request = lambda path, body: captured.append(body) or {"processQueryKey": "test"}
+        transport.send(item, delivery)
+        content = json.loads(captured[0]["msgParam"])["content"]
+        assert "信息来源：监控" in content and "商机编号" in content and "认领方式" in content
+        assert "无需认领" not in content
+
+
+def test_send_failure_diagnostics_do_not_expose_payloads():
+    from scout.dingtalk import send_error
+    request = httpx.Request("POST", "https://example.com/private")
+    response = httpx.Response(429, request=request, text="secret payload")
+    error = httpx.HTTPStatusError("secret", request=request, response=response)
+    assert send_error(error) == "send_http_429"
+    assert send_error(httpx.ReadTimeout("secret")) == "send_timeout"
+    assert send_error(httpx.ConnectError("secret")) == "send_connection_error"
+    assert send_error(ValueError("missing_message_id")) == "missing_message_id"
+    assert send_error(ValueError("secret")) == "send_result_unknown"

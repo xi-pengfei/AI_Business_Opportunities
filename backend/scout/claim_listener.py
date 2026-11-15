@@ -8,6 +8,7 @@ import dingtalk_stream
 from scout.claims import accept_claim
 from scout.config import settings
 from scout.dingtalk import configured
+from scout.group_discovery import discover_group
 
 
 class ClaimHandler(dingtalk_stream.CallbackHandler):
@@ -18,7 +19,8 @@ class ClaimHandler(dingtalk_stream.CallbackHandler):
 
     async def process(self, message):
         try:
-            await asyncio.to_thread(accept_claim, message.data, self.config)
+            if not await asyncio.to_thread(discover_group, message.data, self.config):
+                await asyncio.to_thread(accept_claim, message.data, self.config)
             return dingtalk_stream.AckMessage.STATUS_OK, "OK"
         except Exception as exc:
             logging.warning("claim callback failed (%s)", type(exc).__name__)

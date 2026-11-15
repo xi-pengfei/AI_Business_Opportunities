@@ -49,10 +49,15 @@ def test_customer_signal_joins_library_without_claim_backlog(client, database):
         assert db.scalar(select(func.count()).select_from(Delivery)) == 0
     rows=client.get('/api/v1/customer-signals').json()
     assert rows['total']==1 and rows['items'][0]['matched_name']=='示例光电股份有限公司'
+    assert client.get('/api/v1/display/snapshot').json()['item_count']==0
+    from scout.ai_review import tick
+    from scout.config import Settings
+    tick(Settings(_env_file=None,deepseek_api_key='test-key'),database,
+         reviewer=lambda *args: {'decision':'customer_news','reason':'扩产新闻，无明确采购','evidence':''})
     snap=client.get('/api/v1/display/snapshot').json()
     assert snap['item_count']==1 and snap['collectors']==[]
     assert snap['pending_count']==0 and snap['backlog_count']==0
-    assert snap['customer_items'][0]['source_name']=='客户监测'
+    assert snap['customer_items'][0]['source_name']=='监控'
     assert snap['customer_items'][0]['requires_claim'] is False
     assert client.get('/api/v1/items').json()[0]['source_type']=='customer_watch'
     masked=client.get('/api/v1/customer-signals',headers={'Authorization':'Bearer test-display'}).json()
@@ -124,3 +129,54 @@ def test_official_identity_requires_exact_host_and_unknown_date_can_be_verified(
         assert verified['signal_id']==result['signal_id'] and verified['quality_status']=='active'
         assert db.scalar(select(func.count()).select_from(CustomerSignal))==1
         assert db.scalar(select(func.count()).select_from(Document))==2
+
+
+def test_monitor_demand_stays_promoted_after_duplicate_collection(client, database):
+    from scout.ai_review import tick
+    from scout.config import Settings
+    c=customer(client)
+    with database.begin() as db:
+        result,_=ingest(db,c['id'])
+    tick(Settings(_env_file=None,deepseek_api_key='test-key'),database,
+         reviewer=lambda *args:{'decision':'buyer_demand','reason':'明确采购需求','evidence':'建设MES数字化系统'})
+    with database.begin() as db:
+        duplicate,_=ingest(db,c['id'],url='https://example.com/mirror')
+        assert duplicate['duplicate']
+        item=db.get(Item,result['signal_id'])
+        assert item.information_kind=='opportunity' and item.quality_status=='active'
+        assert 'https://example.com/mirror' in item.source_urls
+    snap=client.get('/api/v1/display/snapshot').json()
+    assert snap['pending_count']==1 and snap['customer_items']==[]
+
+
+def test_edit_customer_urls_preserves_state_and_inflight_identity(client, database):
+    from sqlalchemy import select
+
+    from scout import service
+    from scout.models import Rule, Task
+    c = client.post('/api/v1/customers',json={'name':'示例制造有限公司','aliases':['示例制造'],
+        'reference_urls':'https://example.com，https://news.example.org/account\nhttps://example.com'}).json()
+    assert len(c['reference_urls']) == 2
+    with database() as db:
+        rule = db.get(Rule,c['rule_id'])
+        assert 'site:news.example.org' in rule.query
+    service.schedule_due()
+    result=client.patch('/api/v1/customers/'+c['id'],json={'name':'示例制造科技有限公司','aliases':['示例科技'],
+        'reference_urls':'https://media.example.net/u/123'}).json()
+    assert result['enabled'] is True
+    with database() as db:
+        task=db.scalar(select(Task).where(Task.rule_id==c['rule_id']))
+        assert task.payload['customer_snapshot']['name']=='示例制造有限公司'
+        assert db.get(Rule,c['rule_id']).version==2
+    client.patch('/api/v1/rules/'+c['rule_id'],json={'enabled':False})
+    assert client.patch('/api/v1/customers/'+c['id'],json={'name':'示例制造科技有限公司','reference_urls':[]}).json()['enabled'] is False
+    assert client.patch('/api/v1/customers/'+c['id'],json={'name':'示例制造科技有限公司','reference_urls':'javascript:alert(1)'}).status_code==422
+
+
+def test_media_reference_domain_does_not_imply_customer_identity():
+    from types import SimpleNamespace
+
+    from scout.customers import classify
+    customer=SimpleNamespace(name='示例科技',aliases=[],website=None,reference_urls=['https://news.example.org/account'])
+    result,reason=classify(customer,'另一企业扩产','另一企业新建生产基地。','2026-11-15','https://news.example.org/unrelated')
+    assert result is None and reason=='customer_mismatch'

@@ -1,0 +1,15 @@
+/* Pure-black display; management pages retain their light theme. */
+body:has(.screen),html:has(.screen) {background:#000;}
+.screen,.screen.is-fullscreen {
+  color-scheme:dark;
+  --bg:#000;--panel:#000;--panel-2:#000;--surface:#000;--surface-2:#151515;--void:#000;
+  --ink:#f2f2f2;--ink-2:#dedede;--ink-3:#bcbcbc;--ink-4:#a3a3a3;
+  --line:#292929;--line-strong:#424242;
+  --accent:#9bd4dd;--accent-soft:#b6e1e7;--accent-tint:#171c1d;--accent-dim:#435456;
+  background:#000;color:var(--ink);
+}
+.screen .panel,.screen.is-fullscreen .panel,.screen .terminal,.screen.is-fullscreen .terminal,
+.screen .collector-strip,.screen th,.screen .auto-scroll thead {background:#000;border-color:var(--line);}
+.screen .fragment-tags .fragment-tag {background:#151515;color:#dedede;border-color:#333;}
+.screen tbody tr:hover {background:#111;}
+.screen .notice,.screen .collector-strip small {color:var(--ink-4);}

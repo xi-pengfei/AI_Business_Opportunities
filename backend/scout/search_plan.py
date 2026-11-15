@@ -12,11 +12,18 @@ RECHECK_SECONDS = 300
 
 def variants(query):
     seeds = list(dict.fromkeys(line.strip() for line in query.splitlines() if line.strip()))
-    topics = list(dict.fromkeys(re.findall(r"ERP|MES|WMS|信息化|数字化|智能体|软件定制|人工智能|AI", query, re.I)))
-    tender_seeds = [s for s in seeds if re.search(r"采购|招标|投标|询价|磋商",s)]
-    if not topics and not tender_seeds:
-        tender_seeds = [f"{s} 采购公告" for s in seeds]
-    return list(dict.fromkeys(tender_seeds + [f"{topic} {intent}" for topic in topics for intent in ("采购公告", "招标公告", "采购意向")]))
+    output = []
+    for seed in seeds:
+        if re.search(r"招聘|求职|寻找开发", seed):
+            pass  # These belong to other collection modes; keep only related tender topics below.
+        elif re.search(r"采购|招标|投标|询价|磋商", seed):
+            output.append(seed)
+        else:
+            output.extend(f"{seed} {intent}" for intent in ("采购公告", "招标公告", "采购意向"))
+        # Related broadening stays within one line, never combines separate demands.
+        topics = re.findall(r"ERP|MES|WMS|信息化|数字化|智能体|软件定制|人工智能|AI", seed, re.I)
+        output.extend(f"{topic} {intent}" for topic in topics for intent in ("采购公告", "招标公告", "采购意向"))
+    return list(dict.fromkeys(output))
 
 
 def choose(db, rule, engines, now=None, force=False):
@@ -25,6 +32,9 @@ def choose(db, rule, engines, now=None, force=False):
                            SearchCursor.config_version == rule.version)).all()
     existing = {(c.query,c.engine) for c in lanes}
     planned = set(line.strip() for line in rule.query.splitlines() if line.strip()) if rule.source_type == "customer_watch" else set(variants(rule.query))
+    if (rule.search_spec or {}).get("product"):
+        from scout.product_rules import ProductSpec
+        planned = set(ProductSpec.model_validate(rule.search_spec).searches())
     for query in sorted(planned):
         for engine in engines:
             if (query,engine) not in existing:

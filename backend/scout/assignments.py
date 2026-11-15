@@ -26,9 +26,9 @@ def assignment_facts(db, demo, now, admin):
     config = settings()
     pending = db.scalars(pending_items(demo, now)).all()
     allocated = (
-        select(Item).where(Item.is_demo == demo)
+        unique_items(demo)
         .join(Delivery, Delivery.item_id == Item.id)
-        .where(Delivery.status.in_(ASSIGNED), Item.source_type != "customer_watch")
+        .where(Delivery.status.in_(ASSIGNED), Item.information_kind.in_(("opportunity", "demand")))
     )
     backlog = db.scalars(
         unique_items(demo).where(
@@ -81,6 +81,6 @@ def assignment_facts(db, demo, now, admin):
         ],
         "assigned_items": [item_record(db, i, admin) for i, d in recent],
         "customer_items": [item_record(db, i, admin) for i in db.scalars(
-            unique_items(demo).where(Item.source_type == "customer_watch", *current_window(now))
+            unique_items(demo).where(Item.information_kind == "customer_update", *current_window(now))
             .order_by(Item.created_at.desc(), Item.id).limit(30))],
     }

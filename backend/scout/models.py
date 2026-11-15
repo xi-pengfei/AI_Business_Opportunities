@@ -19,6 +19,7 @@ class Customer(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True)
     aliases: Mapped[list] = mapped_column(JSON, default=list)
     website: Mapped[str | None] = mapped_column(Text)
+    reference_urls: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     identity_source: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
 
@@ -29,7 +30,8 @@ class Rule(Base):
     name: Mapped[str] = mapped_column(String(120))
     source_type: Mapped[str] = mapped_column(String(30), default="public_tender", server_default="public_tender")
     customer_id: Mapped[str | None] = mapped_column(ForeignKey("customers.id"), unique=True)
-    query: Mapped[str] = mapped_column(String(500))
+    query: Mapped[str] = mapped_column(Text)
+    search_spec: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     provider: Mapped[str] = mapped_column(String(30), default="tavily")
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     interval_seconds: Mapped[int] = mapped_column(Integer, default=3600)
@@ -107,6 +109,10 @@ class Item(Base):
     information_kind: Mapped[str] = mapped_column(String(20), default="bulletin", server_default="bulletin")
     contacts: Mapped[list] = mapped_column(JSON, default=list)
     quality_status: Mapped[str] = mapped_column(String(20), default="active", server_default="active")
+    related_item_id: Mapped[str | None] = mapped_column(ForeignKey("information_items.id"), index=True)
+    relation_kind: Mapped[str | None] = mapped_column(String(20))
+    source_urls: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    ai_review: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     quality_reason: Mapped[str | None] = mapped_column(String(50))
     region: Mapped[str | None] = mapped_column(String(20))
     region_evidence: Mapped[str | None] = mapped_column(String(100))
@@ -197,3 +203,11 @@ class BacklogSample(Base):
     is_demo: Mapped[bool] = mapped_column(Boolean, primary_key=True)
     pending: Mapped[int] = mapped_column(Integer)
     waiting_claim: Mapped[int] = mapped_column(Integer)
+
+
+class DingTalkGroup(Base):
+    __tablename__ = "dingtalk_discovered_groups"
+    conversation_id: Mapped[str] = mapped_column(String(300), primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    robot_code: Mapped[str] = mapped_column(String(120))
+    requested_at: Mapped[float] = mapped_column(Float)
