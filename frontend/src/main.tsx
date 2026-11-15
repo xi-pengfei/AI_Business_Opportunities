@@ -389,7 +389,6 @@ function App() {
                 selection={chartSelection} request={request} close={() => setChartSelection(null)}
                 open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
 
-              <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
               <div className="workfield">
                 <section className="panel terminal">
                   <h2>信息来源</h2>
@@ -456,6 +455,7 @@ function App() {
                 />
               </div>
               <FollowupPanels data={data} open={item=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
+              <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
             </>
           )}
           {!data && <div className="empty">正在读取运行状态…</div>}
