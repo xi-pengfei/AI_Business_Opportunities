@@ -277,3 +277,47 @@
   flex: 0 1 auto;
   min-width: 0;
 }
+
+/* ---------- 视觉打磨：层次 / 统一性 / 质感（纯样式，不动数据） ---------- */
+
+/* 头部：标题下方主题色渐隐细条，与大屏内容形成分隔 */
+.screen .mast {position:relative;}
+.screen .mast::after {content:"";position:absolute;left:0;right:0;bottom:-12px;height:2px;border-radius:1px;background:linear-gradient(90deg,var(--accent),rgba(116,211,232,.25) 45%,transparent 82%);}
+
+/* 1. 面板标题锚点：左侧主题色竖条 + 计数右对齐 */
+.screen h2 {display:flex;align-items:baseline;gap:8px;}
+.screen h2::before {content:"";flex:none;width:3px;height:14px;border-radius:2px;background:var(--accent);align-self:center;}
+.screen h2 small {margin-left:auto;font-weight:400;color:var(--accent);font-variant-numeric:tabular-nums;}
+
+/* 2. 表格行的呼吸感：偶数行极淡斑马纹 + 悬停提亮 */
+.screen .library tbody tr:nth-child(even),
+.screen .followup-panels tbody tr:nth-child(even) {background:rgba(127,152,176,.06);}
+.screen .library tbody tr:hover,
+.screen .followup-panels tbody tr:hover {background:var(--surface-2);}
+.screen .collector-monitor tbody tr:hover {background:rgba(140,169,255,.08);}
+
+/* 3. 长列表底部渐隐：内容像“流出去”而不是被切断 */
+.screen .table-scroll,
+.screen .auto-scroll {
+  -webkit-mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 26px),transparent 100%);
+  mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 26px),transparent 100%);
+}
+
+/* 4. 采集监控与整体统一：同族圆角与描边，单元格透明以支持悬停 */
+.screen .collector-monitor {border-radius:8px;border-color:var(--line);background:linear-gradient(180deg,#111827,#0b101b);}
+.screen .collector-monitor th,.screen .collector-monitor td {background:transparent;}
+
+/* 6. 空态统一：居中 + 极简菱形符号 */
+.screen .empty,
+.screen .chart-empty {display:flex;align-items:center;justify-content:center;gap:8px;}
+.screen .empty::before,
+.screen .chart-empty::before {content:"◇";font-size:13px;opacity:.75;}
+
+/* 7. 头部按钮幽灵化：描边透明底，悬停提亮 */
+.screen .toolbar button {background:transparent;border:1px solid var(--line-strong);border-radius:6px;color:var(--ink-2);}
+.screen .toolbar button:hover {background:var(--surface-2);color:var(--ink);}
+
+/* 9. 圆角与内边距统一：面板 8px / 内容区 12px */
+.screen .panel {border-radius:8px;}
+.screen .charts > section,
+.screen .terminal {padding:12px;}

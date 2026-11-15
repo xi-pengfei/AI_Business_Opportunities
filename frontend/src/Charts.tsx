@@ -88,7 +88,7 @@ export function Plot({ option, label, onPick }: { option: EChartsCoreOption; lab
 }
 export function Charts({ data, onSelect, dark = false }: { data: Snapshot; onSelect: (range: ChartSelection) => void; dark?:boolean }) {
   const ink=dark?'#D9E0E4':'#53616f', grid=dark?'rgba(255,255,255,.12)':'#e8edf2';
-  const colors = ['#78A9C4','#74B5A3','#C8AD78'];
+  const colors = ['#74d7e8','#78A9C4','#9be3b1'];
   const hitColors = ['#dd4444','#fec42c','#80F1BE'];
   const flowColor = (name:string) => name.includes('待认领') ? '#C8AD78'
     : name.includes('已认领') ? '#74B5A3'
