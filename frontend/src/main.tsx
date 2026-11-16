@@ -9,7 +9,7 @@ import type { Cargo } from "./fragments";
 import {SourceFeed} from "./SourceFeed";
 import {Information} from "./FlowPanels";
 import { Xiaohongshu } from "./Xiaohongshu";
-import { FollowupPanels } from "./FollowupPanels";
+import { BusinessFollowup } from "./FollowupPanels";
 import { NetworkRules } from "./NetworkRules";
 import { Customers } from "./Customers";
 import { TokenPanel, KeyIcon } from "./TokenPanel";
@@ -612,7 +612,7 @@ function App() {
                 selection={chartSelection} request={request} close={() => setChartSelection(null)}
                 open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
 
-              <div className="workfield">
+              <div className="workfield stage-grid">
                 <section className="panel terminal">
                   <h2>信息来源</h2>
                   <SourceFeed items={terminalFeed} moving={moving} landed={landed} />
@@ -650,6 +650,7 @@ function App() {
                     </p>
                   )}
                 </section>
+                <div className="stage-side">
                 <section className="panel library">
                   <h2>
                     信息库 <small>{data.pending_count} 条</small>
@@ -666,6 +667,8 @@ function App() {
                     }}
                   />
                 </section>
+                <BusinessFollowup data={data} open={(item:Item)=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
+                </div>
                 <Spider
                   item={moving}
                   onDelivered={completeCargo}
@@ -677,7 +680,6 @@ function App() {
                   }
                 />
               </div>
-              <FollowupPanels data={data} open={(item:Item)=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
               <div className="charts"><Charts data={data} onSelect={setChartSelection} dark /></div>
               <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
             </>

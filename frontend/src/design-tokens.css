@@ -320,7 +320,14 @@
 .screen .charts > section,
 .screen .terminal {padding:12px;}
 
-/* ---------- 蜘蛛舞台：商机跟进独占一行，信息来源拿两行高度 + 2/3 宽 ---------- */
+/* ---------- 蜘蛛舞台：左右各 1/2，信息来源跨两行 ---------- */
+/* 左列：信息来源占满两行高度；右列：上信息库、下商机跟进 */
+
+.screen .stage-grid {grid-template-columns:minmax(0,1fr) minmax(0,1fr);height:840px;min-height:840px;}
+.screen .stage-grid > .terminal {grid-column:1;grid-row:1;min-width:0;min-height:0;}
+.screen .stage-side {display:flex;flex-direction:column;gap:var(--gap);min-width:0;min-height:0;grid-column:2;grid-row:1;}
+.screen .stage-side .library {flex:1;min-height:0;}
+.screen .stage-side .business-followup {flex:none;height:240px;margin:0;}
 
 /* 商机跟进独占整行（监控动态已移除），表格横向舒展 */
 .screen .business-followup {display:flex;flex-direction:column;height:240px;min-height:0;overflow:hidden;padding:12px;margin:0 0 var(--gap);}
@@ -328,8 +335,11 @@
 .screen .business-followup .table-scroll {flex:1;min-height:0;overflow:auto;scrollbar-width:none;}
 .screen .business-followup .table-scroll::-webkit-scrollbar {display:none;}
 
-/* 信息来源：2/3 宽 + 两行高的大舞台；信息库 1/3 */
-.screen .workfield {grid-template-columns:minmax(0,2fr) minmax(0,1fr);height:620px;min-height:620px;}
+/* 全屏：舞台随大屏行高撑满（不锁 840px），左右两列各自填满高度 */
+:fullscreen .screen.is-fullscreen .stage-grid {height:100%;grid-template-rows:minmax(0,1fr);}
+:fullscreen .screen.is-fullscreen .stage-side {height:100%;}
+:fullscreen .screen.is-fullscreen .stage-side .business-followup,
+:fullscreen .screen.is-fullscreen .business-followup {height:220px;margin:0;}
 
 /* 细节 1：舞台微暗，彩色蜘蛛腿与高亮片对比度上一档（仅深色全屏） */
 .screen.is-fullscreen .terminal {background:linear-gradient(180deg,#161c25,#11161d);}
@@ -342,4 +352,4 @@
 /* 细节 3：蜘蛛“读”的原文加大一号，远看更清楚 */
 .screen .source-document {font-size:15px;}
 
-@media(max-width:750px) {.screen .workfield {grid-template-columns:1fr;height:auto;min-height:0;}.screen .business-followup {height:auto;}}
+@media(max-width:750px) {.screen .stage-grid {grid-template-columns:1fr;height:auto;min-height:0;}.screen .business-followup {height:auto;}}
