@@ -608,6 +608,8 @@ function App() {
           )}
           {display && data && (
             <>
+              <KpiStrip data={data} />
+
               {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
                 selection={chartSelection} request={request} close={() => setChartSelection(null)}
                 open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
@@ -907,6 +909,36 @@ function App() {
         </>
       )}
     </main>
+  );
+}
+
+/** 顶部 KPI 指标条：采集 → 入库 → 认领 → 推送漏斗 + 采集健康度，全部来自快照现成字段 */
+function KpiStrip({ data }: { data: Snapshot }) {
+  const calendar = data.discovery_calendar || [];
+  const todayIn = calendar.length ? calendar[calendar.length - 1].count : 0;
+  const collectors = data.collectors || [];
+  const collectorsOk = collectors.filter(
+    (c) => !["retry_wait", "failed", "action_required"].includes(c.state),
+  ).length;
+  const cards: { label: string; value: string | number; unit?: string; accent?: boolean }[] = [
+    { label: "今日入库", value: todayIn, unit: "条", accent: true },
+    { label: "待认领", value: data.pending_count, unit: "条" },
+    { label: "已认领", value: data.assigned_count, unit: "条" },
+    { label: "已推送", value: data.pushed_count, unit: "条" },
+    { label: "采集在线", value: `${collectorsOk}/${collectors.length}`, unit: "路" },
+  ];
+  return (
+    <div className="kpi-strip">
+      {cards.map((c) => (
+        <div className={`kpi-card${c.accent ? " is-accent" : ""}`} key={c.label}>
+          <span className="kpi-label">{c.label}</span>
+          <span className="kpi-value">
+            {c.value}
+            {c.unit && <small>{c.unit}</small>}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 function ChartRecords({ selection, request, close, open }: {

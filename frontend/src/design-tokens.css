@@ -353,3 +353,14 @@
 .screen .source-document {font-size:15px;}
 
 @media(max-width:750px) {.screen .stage-grid {grid-template-columns:1fr;height:auto;min-height:0;}.screen .business-followup {height:auto;}}
+
+/* ---------- 顶部 KPI 指标条：采集→入库→认领→推送漏斗 ---------- */
+.screen .kpi-strip {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--gap);margin:0 0 var(--gap);}
+.screen .kpi-card {position:relative;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px 12px;display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden;}
+.screen .kpi-card:before {content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),transparent);opacity:.5;}
+.screen .kpi-card .kpi-label {font-size:12px;color:var(--ink-3);letter-spacing:1px;}
+.screen .kpi-card .kpi-value {font-size:26px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;white-space:nowrap;}
+.screen .kpi-card .kpi-value small {font-size:12px;font-weight:400;color:var(--ink-3);margin-left:3px;letter-spacing:0;}
+.screen .kpi-card.is-accent .kpi-value {color:var(--accent-soft);}
+.screen .kpi-card.is-accent:before {opacity:.95;}
+@media(max-width:750px) {.screen .kpi-strip {grid-template-columns:repeat(2,minmax(0,1fr));}}
