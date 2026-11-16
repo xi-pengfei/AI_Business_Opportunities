@@ -914,6 +914,14 @@ function App() {
 }
 
 /** 顶部 KPI 指标条：采集 → 入库 → 认领 → 推送漏斗 + 采集健康度，全部来自快照现成字段 */
+const KPI_ICONS: Record<string, React.ReactNode> = {
+  今日入库: <><path d="M12 3v11" /><path d="M7.5 9.5 12 14l4.5-4.5" /><path d="M4 18.5h16" /></>,
+  待认领: <><rect x="3.5" y="5" width="17" height="14" rx="1.5" /><path d="M3.5 10h17" /><path d="M10 14h4" /></>,
+  已认领: <><path d="M20 6.5 9.5 17 4 11.5" /></>,
+  已推送: <><path d="M21 3 10.5 13.5" /><path d="M21 3l-6.5 18-4-8.5L2 8.5z" /></>,
+  采集在线: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
+};
+
 function KpiStrip({ data }: { data: Snapshot }) {
   const calendar = data.discovery_calendar || [];
   const last7 = calendar.slice(-7).map((c) => c.count);
@@ -935,13 +943,14 @@ function KpiStrip({ data }: { data: Snapshot }) {
   const pushTrend = perDay((i) => i.sent_at);
   const backlogTrend = (data.backlog_history || []).slice(-7).map((s) => s[1]);
   const cards: {
-    label: string; value: string | number; unit?: string; accent?: boolean; trend?: number[]; flash?: boolean;
+    label: string; value: string | number; unit?: string; accent?: boolean;
+    trend?: number[]; flash?: boolean; states?: string[];
   }[] = [
     { label: "今日入库", value: todayIn, unit: "条", accent: true, trend: last7, flash: true },
     { label: "待认领", value: data.pending_count, unit: "条", trend: backlogTrend },
     { label: "已认领", value: data.assigned_count, unit: "条", trend: claimTrend },
     { label: "已推送", value: data.pushed_count, unit: "条", trend: pushTrend },
-    { label: "采集在线", value: `${collectorsOk}/${collectors.length}`, unit: "路" },
+    { label: "采集在线", value: `${collectorsOk}/${collectors.length}`, unit: "路", states: collectors.map((c) => c.state) },
   ];
   // 数字变化时闪一下高亮（新商机入库的瞬间“今日入库”跳一下）
   const prevToday = useRef(todayIn);
@@ -958,30 +967,45 @@ function KpiStrip({ data }: { data: Snapshot }) {
     <div className="kpi-strip">
       {cards.map((c) => (
         <div className={`kpi-card${c.accent ? " is-accent" : ""}`} key={c.label}>
-          <span className="kpi-label">{c.label}</span>
+          <span className="kpi-label">
+            <svg viewBox="0 0 24 24" aria-hidden>{KPI_ICONS[c.label]}</svg>
+            {c.label}
+          </span>
           <span className={`kpi-value${c.flash && flash ? " kpi-flash" : ""}`}>
             {c.value}
             {c.unit && <small>{c.unit}</small>}
           </span>
-          {c.trend && c.trend.length > 1 && <TrendBars points={c.trend} />}
+          {c.trend && c.trend.length > 1 && <TrendLine points={c.trend} />}
+          {c.states && c.states.length > 0 && (
+            <div className="kpi-dots" aria-hidden>
+              {c.states.map((s, i) => (
+                <i key={i} className={s === "failed" ? "bad" : ["retry_wait", "action_required"].includes(s) ? "warn" : ""} />
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-/** 卡内迷你趋势条：最后一根（今天）用主题色高亮 */
-function TrendBars({ points }: { points: number[] }) {
+/** 卡内迷你趋势：平滑面积折线 + 末端发光点（稀疏数据下依旧优雅） */
+function TrendLine({ points }: { points: number[] }) {
+  const w = 100, h = 26, pad = 3;
+  const n = points.length;
   const max = Math.max(...points, 1);
+  const x = (i: number) => (n === 1 ? w / 2 : (i * w) / (n - 1));
+  const y = (v: number) => h - pad - (v / max) * (h - pad * 2 - 2);
+  const pts = points.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(" ");
+  const dotLeft = (x(n - 1) / w) * 100;
+  const dotBottom = ((h - y(points[n - 1])) / h) * 100;
   return (
-    <div className="kpi-trend">
-      {points.map((v, i) => (
-        <i
-          key={i}
-          className={i === points.length - 1 ? "hi" : ""}
-          style={{ height: `${Math.max(10, Math.round((v / max) * 100))}%` }}
-        />
-      ))}
+    <div className="kpi-trend" aria-hidden>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+        <polygon points={`${pad},${h} ${pts} ${w - pad},${h}`} style={{ fill: "rgba(141,212,222,.13)" }} />
+        <polyline points={pts} style={{ fill: "none", stroke: "var(--accent)", strokeWidth: 1.6 }} vectorEffect="non-scaling-stroke" />
+      </svg>
+      <i className="kpi-trend-dot" style={{ left: `${dotLeft}%`, bottom: `${dotBottom}%` }} />
     </div>
   );
 }

@@ -356,20 +356,25 @@
 
 /* ---------- 顶部 KPI 指标条：采集→入库→认领→推送漏斗 ---------- */
 .screen .kpi-strip {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--gap);margin:0 0 var(--gap);}
-.screen .kpi-card {position:relative;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px 12px;display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden;}
-.screen .kpi-card:before {content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),transparent);opacity:.5;}
-.screen .kpi-card .kpi-label {font-size:12px;color:var(--ink-3);letter-spacing:1px;}
-.screen .kpi-card .kpi-value {font-size:26px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;white-space:nowrap;}
-.screen .kpi-card .kpi-value small {font-size:12px;font-weight:400;color:var(--ink-3);margin-left:3px;letter-spacing:0;}
-.screen .kpi-card.is-accent .kpi-value {color:var(--accent-soft);}
-.screen .kpi-card.is-accent:before {opacity:.95;}
+.screen .kpi-card {position:relative;background:radial-gradient(130% 110% at 88% 118%,rgba(141,212,222,.12),transparent 55%),var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px 13px;display:flex;flex-direction:column;gap:5px;min-width:0;overflow:hidden;}
+.screen .kpi-card:before {content:"";position:absolute;top:0;left:0;width:15px;height:15px;border-top:2px solid rgba(141,212,222,.75);border-left:2px solid rgba(141,212,222,.75);border-top-left-radius:8px;}
+.screen .kpi-card:after {content:"";position:absolute;bottom:0;right:0;width:15px;height:15px;border-bottom:2px solid rgba(141,212,222,.75);border-right:2px solid rgba(141,212,222,.75);border-bottom-right-radius:8px;}
+.screen .kpi-card.is-accent:before,.screen .kpi-card.is-accent:after {border-color:var(--accent-soft);}
+.screen .kpi-card .kpi-label {font-size:12px;color:var(--ink-3);letter-spacing:2px;display:flex;align-items:center;gap:7px;}
+.screen .kpi-card .kpi-label svg {width:13px;height:13px;stroke:var(--accent-soft);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;}
+.screen .kpi-card .kpi-value {font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.08;white-space:nowrap;display:inline-block;color:var(--accent-soft);background:linear-gradient(180deg,#f2f8fb 15%,var(--accent-soft) 95%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.screen .kpi-card .kpi-value small {font-size:12px;font-weight:400;letter-spacing:0;margin-left:4px;-webkit-text-fill-color:var(--ink-3);}
+.screen .kpi-card.is-accent {border-color:rgba(141,212,222,.45);}
 @media(max-width:750px) {.screen .kpi-strip {grid-template-columns:repeat(2,minmax(0,1fr));}}
-.screen .kpi-trend {display:flex;align-items:flex-end;gap:3px;height:16px;margin-top:6px;}
-.screen .kpi-trend i {flex:1;min-width:0;background:rgba(141,212,222,.28);border-radius:1px;min-height:2px;}
-.screen .kpi-trend i.hi {background:var(--accent);}
+.screen .kpi-trend {position:relative;height:26px;margin-top:7px;}
+.screen .kpi-trend svg {position:absolute;inset:0;width:100%;height:100%;}
+.screen .kpi-trend-dot {position:absolute;width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px rgba(141,212,222,.95);transform:translate(-50%,50%);}
+.screen .kpi-dots {display:flex;gap:7px;align-items:center;height:26px;margin-top:7px;}
+.screen .kpi-dots i {width:8px;height:8px;border-radius:50%;background:#39d98a;box-shadow:0 0 5px rgba(57,217,138,.55);flex:none;}
+.screen .kpi-dots i.warn {background:#e8bb69;box-shadow:0 0 5px rgba(232,187,105,.55);}
+.screen .kpi-dots i.bad {background:#e2606e;box-shadow:0 0 5px rgba(226,96,110,.55);}
 .screen .kpi-value.kpi-flash {animation:kpi-flash 1.4s ease-out;}
-@keyframes kpi-flash {0% {color:#fff;text-shadow:0 0 14px rgba(141,212,222,.95);transform:scale(1.18);}60% {color:var(--accent-soft);text-shadow:0 0 8px rgba(141,212,222,.5);}100% {color:var(--ink);text-shadow:none;transform:none;}}
-.screen .kpi-value {display:inline-block;}
+@keyframes kpi-flash {0% {filter:drop-shadow(0 0 12px rgba(141,212,222,.95)) brightness(1.7);transform:scale(1.16);}60% {filter:drop-shadow(0 0 6px rgba(141,212,222,.5)) brightness(1.15);}100% {filter:none;transform:none;}}
 @media (prefers-reduced-motion: reduce) {.screen .kpi-value.kpi-flash {animation:none;}}
 
 /* ---------- 块标题透明横条：增强区域感 ---------- */
@@ -381,3 +386,5 @@
 .screen .information-flow-table.slim-table th:nth-child(2) {width:34%!important;}
 .screen .information-flow-table.slim-table th:nth-child(3) {width:16%!important;}
 .screen .information-flow-table.slim-table th:nth-child(4) {width:16%!important;}
+.screen .fragment-tag {background:rgba(141,212,222,.09);border-color:rgba(141,212,222,.22);color:#c3dde6;}
+.screen .text-button:hover {color:var(--accent-soft);}
