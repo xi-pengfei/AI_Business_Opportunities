@@ -1703,6 +1703,11 @@ button.console-side-foot:hover {
 }
 .cell-name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cell-name-line .cell-link { padding: 0; }
+/* 客户行单行化：不换行，超出省略 */
+.cell-line { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.cell-line > * { flex: 0 0 auto; white-space: nowrap; }
+.cell-line .cell-link { padding: 0; overflow: hidden; text-overflow: ellipsis; }
+.count-pill { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; background: var(--accent-tint); color: var(--accent); font-size: 12px; font-weight: 600; line-height: 18px; }
 .signal-item {
   border: 1px solid var(--line);
   border-radius: 10px;

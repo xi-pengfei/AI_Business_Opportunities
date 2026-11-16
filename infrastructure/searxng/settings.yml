@@ -5,6 +5,14 @@ server:
 search:
   formats: [html, json]
   default_lang: zh-CN
+engines:
+  # 大陆网络可达的引擎（Google/DuckDuckGo/Brave 被墙或限流，Mojeek 需 PoW 验证码）
+  - name: 360search
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: baidu
+    disabled: false
 outgoing:
   request_timeout: 10
   max_request_timeout: 15

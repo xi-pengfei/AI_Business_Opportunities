@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { errors } from "./types";
 
 type Request = (path: string, options?: RequestInit) => Promise<any>;
-type Customer = { id: string; name: string; aliases: string[]; website?: string; reference_urls?:string[]; rule_id: string; enabled: boolean; query?: string; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; next_run_at: number };
+type Customer = { id: string; name: string; aliases: string[]; website?: string; reference_urls?:string[]; rule_id: string; enabled: boolean; query?: string; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; signal_count?: number; next_run_at: number };
 type Signal = { id: string; customer_name: string; title: string; url?: string; topic: string; fragments?: {text:string}[]; published_at?: string; created_at: number; matched_name?: string };
 type Draft = { id?: string; name: string; aliases: string; urls: string };
 const empty: Draft = { name: "", aliases: "", urls: "" };
@@ -189,28 +189,28 @@ export function Customers({request, manage = false}: {request: Request; manage?:
         <table className="rule-table fit">
           <thead><tr>
             <th style={{width:'6%'}}>序号</th>
-            <th style={{width:'39%'}}>客户</th>
-            <th style={{width:'15%'}}>最近搜索</th>
-            <th style={{width:'15%'}}>最后新增</th>
-            <th style={{width:'25%'}}>操作</th>
+            <th style={{width:'47%'}}>客户</th>
+            <th style={{width:'16%'}}>最近搜索</th>
+            <th style={{width:'16%'}}>最后新增</th>
+            <th style={{width:'15%'}}>操作</th>
           </tr></thead>
           <tbody>
             {pageRows.map((c,i)=>{
               const s=statusOf(c);
-              const urls=(c.reference_urls?.length?c.reference_urls:c.website?[c.website]:[]);
               return <tr key={c.id}>
                 <td className="idx-cell">{(current-1)*pageSize+i+1}</td>
                 <td>
-                  <div className="cell-main">
-                    <div className="cell-name-line"><button type="button" className="cell-link" disabled={busy} onClick={()=>openDetail(c)} title="查看该客户的动向明细">{c.name}</button><span className={"st "+s.cls}>{s.text}</span></div>
-                    <div className="cell-meta" title={c.query?`当前搜索：${c.query}`:undefined}>参考网址 {urls.length} 个{c.query?" · 正在搜索":""}</div>
-                    {c.aliases.length>0&&<div className="chip-row">{c.aliases.slice(0,3).map(a=><span className="chip" key={a}>{a}</span>)}{c.aliases.length>3&&<span className="chip">+{c.aliases.length-3}</span>}</div>}
+                  <div className="cell-line" title={c.aliases.length?`别名：${c.aliases.join(" / ")}`:undefined}>
+                    <button type="button" className="cell-link" disabled={busy} onClick={()=>openDetail(c)} title="查看该客户的动向明细">{c.name}</button>
+                    <span className={"st "+s.cls}>{s.text}</span>
+                    <span className="count-pill" title="近 30 天入库信息数量">{c.signal_count ?? 0} 条</span>
+                    {c.aliases.length>0&&c.aliases.slice(0,2).map(a=><span className="chip" key={a}>{a}</span>)}
+                    {c.aliases.length>2&&<span className="chip">+{c.aliases.length-2}</span>}
                   </div>
                 </td>
                 <td className="muted">{dateTime(c.last_search_at)}</td>
                 <td className="muted">{dateTime(c.last_found_at)}</td>
                 <td><div className="actions">
-                  <button className="btn btn-sm" disabled={busy} onClick={()=>openDetail(c)}>查看动向</button>
                   <button className="btn btn-sm" disabled={busy} onClick={()=>edit(c)}>修改</button>
                   <button className="btn btn-sm btn-quiet" disabled={busy} onClick={()=>toggle(c)}>{c.enabled?"停止监测":"开始监测"}</button>
                 </div></td>
