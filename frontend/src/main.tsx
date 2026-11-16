@@ -9,7 +9,7 @@ import type { Cargo } from "./fragments";
 import {SourceFeed} from "./SourceFeed";
 import {Information} from "./FlowPanels";
 import { Xiaohongshu } from "./Xiaohongshu";
-import { BusinessFollowup } from "./FollowupPanels";
+import { FollowupPanels } from "./FollowupPanels";
 import { NetworkRules } from "./NetworkRules";
 import { Customers } from "./Customers";
 import { TokenPanel, KeyIcon } from "./TokenPanel";
@@ -677,7 +677,7 @@ function App() {
                   }
                 />
               </div>
-              <BusinessFollowup data={data} open={item=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
+              <FollowupPanels data={data} open={(item:Item)=>request(`/items/${item.id}`).then(setDetail).catch(e=>setError(e.message))} />
               <div className="charts"><Charts data={data} onSelect={setChartSelection} dark /></div>
               <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
             </>
