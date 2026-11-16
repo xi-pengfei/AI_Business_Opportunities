@@ -364,3 +364,20 @@
 .screen .kpi-card.is-accent .kpi-value {color:var(--accent-soft);}
 .screen .kpi-card.is-accent:before {opacity:.95;}
 @media(max-width:750px) {.screen .kpi-strip {grid-template-columns:repeat(2,minmax(0,1fr));}}
+.screen .kpi-trend {display:flex;align-items:flex-end;gap:3px;height:16px;margin-top:6px;}
+.screen .kpi-trend i {flex:1;min-width:0;background:rgba(141,212,222,.28);border-radius:1px;min-height:2px;}
+.screen .kpi-trend i.hi {background:var(--accent);}
+.screen .kpi-value.kpi-flash {animation:kpi-flash 1.4s ease-out;}
+@keyframes kpi-flash {0% {color:#fff;text-shadow:0 0 14px rgba(141,212,222,.95);transform:scale(1.18);}60% {color:var(--accent-soft);text-shadow:0 0 8px rgba(141,212,222,.5);}100% {color:var(--ink);text-shadow:none;transform:none;}}
+.screen .kpi-value {display:inline-block;}
+@media (prefers-reduced-motion: reduce) {.screen .kpi-value.kpi-flash {animation:none;}}
+
+/* ---------- 块标题透明横条：增强区域感 ---------- */
+.screen h2 {background:linear-gradient(90deg,var(--accent-tint) 0%,rgba(112,195,206,.04) 70%,transparent 100%);padding:5px 10px;border-radius:6px;}
+.screen .terminal h2 {background:linear-gradient(90deg,rgba(57,217,138,.12) 0%,rgba(57,217,138,.03) 70%,transparent 100%);}
+
+/* ---------- 信息库窄版（大屏）：只留 标题/信息片/发布时间/采集时间 ---------- */
+.screen .information-flow-table.slim-table th:nth-child(1) {width:34%!important;}
+.screen .information-flow-table.slim-table th:nth-child(2) {width:34%!important;}
+.screen .information-flow-table.slim-table th:nth-child(3) {width:16%!important;}
+.screen .information-flow-table.slim-table th:nth-child(4) {width:16%!important;}

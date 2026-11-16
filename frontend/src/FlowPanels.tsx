@@ -25,15 +25,15 @@ export function SourceFields({item,landed}: {item:Item;moving:Cargo|null;landed:
     {item.url && <><h4>原始网址</h4><p className="document-reference"><a href={item.url} target="_blank" rel="noopener noreferrer">{url ? mark(url) : item.url}</a></p></>}
   </div>;
 }
-export function Information({ items, open, autoScroll = false, lifecycle = true }: { items: Item[]; open: (item: Item) => void; autoScroll?: boolean; lifecycle?: boolean }) {
-  return <><AutoScroll enabled={autoScroll} label="信息库记录"><table className="fragment-table information-flow-table">
-    <thead><tr><th scope="col" data-inbox-field="title">标题</th><th scope="col">信息来源</th><th scope="col">状态</th><th scope="col" data-inbox-field="fragments">信息片</th><th scope="col" data-inbox-field="url">原始网址</th><th scope="col" data-inbox-field="published_at">发布时间</th><th scope="col" data-inbox-field="created_at">采集时间</th>{lifecycle && <><th scope="col">推送时间</th><th scope="col">认领人</th><th scope="col">认领时间</th></>}</tr></thead>
+export function Information({ items, open, autoScroll = false, lifecycle = true, slim = false }: { items: Item[]; open: (item: Item) => void; autoScroll?: boolean; lifecycle?: boolean; slim?: boolean }) {
+  return <><AutoScroll enabled={autoScroll} label="信息库记录"><table className={"fragment-table information-flow-table" + (slim ? " slim-table" : "")}>
+    <thead><tr><th scope="col" data-inbox-field="title">标题</th>{!slim && <><th scope="col">信息来源</th><th scope="col">状态</th></>}<th scope="col" data-inbox-field="fragments">信息片</th>{!slim && <th scope="col" data-inbox-field="url">原始网址</th>}<th scope="col" data-inbox-field="published_at">发布时间</th><th scope="col" data-inbox-field="created_at">采集时间</th>{lifecycle && <><th scope="col">推送时间</th><th scope="col">认领人</th><th scope="col">认领时间</th></>}</tr></thead>
     <tbody>{items.map(item => <tr key={item.id} data-library-item={item.id}>
       <td data-field="title"><button className="text-button" onClick={()=>open(item)}>{item.title || '—'}</button></td>
-      <td>{sourceName(item)}</td><td><StatusPill item={item}/></td>
+      {!slim && <><td>{sourceName(item)}</td><td><StatusPill item={item}/></td></>}
       <td data-field="fragments"><div className="fragment-tags">{(item.fragments || []).map(f => <button onClick={()=>open(item)}
         className="fragment-tag" key={f.index} data-landed-fragment={`${item.id}:fragments:${f.index}`}>{f.text}</button>)}</div></td>
-      <td data-field="url">{item.url ? <a className="single-line" href={item.url} target="_blank" rel="noopener noreferrer">{new URL(item.url).hostname}</a> : '—'}</td>
+      {!slim && <td data-field="url">{item.url ? <a className="single-line" href={item.url} target="_blank" rel="noopener noreferrer">{new URL(item.url).hostname}</a> : '—'}</td>}
       <td data-field="published_at">{item.published_at || '—'}</td><td data-field="created_at">{lifecycle?fullTime(item.created_at):item.created_at?clock(item.created_at):'—'}</td>
       {lifecycle && <><td>{fullTime(item.sent_at)}</td><td>{item.requires_claim===false?'—':item.claimed_by||'—'}</td><td>{item.requires_claim===false?'—':fullTime(item.claimed_at)}</td></>}
     </tr>)}</tbody>

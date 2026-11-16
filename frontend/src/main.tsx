@@ -658,6 +658,7 @@ function App() {
                     信息库 <small>{data.pending_count} 条</small>
                   </h2>
                   <Information
+                    slim
                     items={library}
                     lifecycle={false}
                     autoScroll={!moving}
@@ -915,28 +916,71 @@ function App() {
 /** 顶部 KPI 指标条：采集 → 入库 → 认领 → 推送漏斗 + 采集健康度，全部来自快照现成字段 */
 function KpiStrip({ data }: { data: Snapshot }) {
   const calendar = data.discovery_calendar || [];
-  const todayIn = calendar.length ? calendar[calendar.length - 1].count : 0;
+  const last7 = calendar.slice(-7).map((c) => c.count);
+  const todayIn = last7.length ? last7[last7.length - 1] : 0;
   const collectors = data.collectors || [];
   const collectorsOk = collectors.filter(
     (c) => !["retry_wait", "failed", "action_required"].includes(c.state),
   ).length;
-  const cards: { label: string; value: string | number; unit?: string; accent?: boolean }[] = [
-    { label: "今日入库", value: todayIn, unit: "条", accent: true },
-    { label: "待认领", value: data.pending_count, unit: "条" },
-    { label: "已认领", value: data.assigned_count, unit: "条" },
-    { label: "已推送", value: data.pushed_count, unit: "条" },
+  // 近 7 天分桶：直接复用入库日历的日界时间戳（东八区口径一致）
+  const dayStarts = calendar.slice(-7).map((c) => c.start);
+  const perDay = (pick: (i: Snapshot["assigned_items"][number]) => number | undefined) =>
+    dayStarts.map((s) =>
+      (data.assigned_items || []).filter((i) => {
+        const t = pick(i);
+        return t != null && t >= s && t < s + 86400;
+      }).length,
+    );
+  const claimTrend = perDay((i) => i.claimed_at);
+  const pushTrend = perDay((i) => i.sent_at);
+  const backlogTrend = (data.backlog_history || []).slice(-7).map((s) => s[1]);
+  const cards: {
+    label: string; value: string | number; unit?: string; accent?: boolean; trend?: number[]; flash?: boolean;
+  }[] = [
+    { label: "今日入库", value: todayIn, unit: "条", accent: true, trend: last7, flash: true },
+    { label: "待认领", value: data.pending_count, unit: "条", trend: backlogTrend },
+    { label: "已认领", value: data.assigned_count, unit: "条", trend: claimTrend },
+    { label: "已推送", value: data.pushed_count, unit: "条", trend: pushTrend },
     { label: "采集在线", value: `${collectorsOk}/${collectors.length}`, unit: "路" },
   ];
+  // 数字变化时闪一下高亮（新商机入库的瞬间“今日入库”跳一下）
+  const prevToday = useRef(todayIn);
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (prevToday.current !== todayIn) {
+      prevToday.current = todayIn;
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 1400);
+      return () => clearTimeout(t);
+    }
+  }, [todayIn]);
   return (
     <div className="kpi-strip">
       {cards.map((c) => (
         <div className={`kpi-card${c.accent ? " is-accent" : ""}`} key={c.label}>
           <span className="kpi-label">{c.label}</span>
-          <span className="kpi-value">
+          <span className={`kpi-value${c.flash && flash ? " kpi-flash" : ""}`}>
             {c.value}
             {c.unit && <small>{c.unit}</small>}
           </span>
+          {c.trend && c.trend.length > 1 && <TrendBars points={c.trend} />}
         </div>
+      ))}
+    </div>
+  );
+}
+
+/** 卡内迷你趋势条：最后一根（今天）用主题色高亮 */
+function TrendBars({ points }: { points: number[] }) {
+  const max = Math.max(...points, 1);
+  return (
+    <div className="kpi-trend">
+      {points.map((v, i) => (
+        <i
+          key={i}
+          className={i === points.length - 1 ? "hi" : ""}
+          style={{ height: `${Math.max(10, Math.round((v / max) * 100))}%` }}
+        />
       ))}
     </div>
   );
