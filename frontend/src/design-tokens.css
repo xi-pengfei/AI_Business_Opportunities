@@ -323,7 +323,7 @@
 /* ---------- 蜘蛛舞台：左右各 1/2，信息来源跨两行 ---------- */
 /* 左列：信息来源占满两行高度；右列：上信息库、下商机跟进 */
 
-.screen .stage-grid {grid-template-columns:minmax(0,1fr) minmax(0,1fr);height:840px;min-height:840px;}
+.screen .stage-grid {grid-template-columns:minmax(0,1fr) minmax(0,2fr);height:840px;min-height:840px;}
 .screen .stage-grid > .terminal {grid-column:1;grid-row:1;min-width:0;min-height:0;}
 .screen .stage-side {display:flex;flex-direction:column;gap:var(--gap);min-width:0;min-height:0;grid-column:2;grid-row:1;}
 .screen .stage-side .library {flex:1;min-height:0;}
