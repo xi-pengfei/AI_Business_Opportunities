@@ -67,8 +67,8 @@ body {background:var(--bg);color:var(--ink);}
 .workspace nav button {color:var(--ink-2);background:transparent;}
 .workspace nav button.active {background:var(--accent-tint);color:var(--accent);}
 [hidden] {display:none!important;}
-:fullscreen .screen.is-fullscreen {height:100dvh;min-height:0;padding:clamp(12px,1vw,24px);display:grid;grid-template-rows:auto minmax(130px,25fr) minmax(180px,44fr) minmax(150px,25fr) auto auto;gap:12px;overflow:hidden;}
-:fullscreen .screen.is-fullscreen > .mast,:fullscreen .screen.is-fullscreen > .charts,:fullscreen .screen.is-fullscreen > .collector-strip,:fullscreen .screen.is-fullscreen > .workfield,:fullscreen .screen.is-fullscreen > .followup-panels,:fullscreen .screen.is-fullscreen > .notice {margin:0;height:auto;min-height:0;}
+:fullscreen .screen.is-fullscreen {height:100dvh;min-height:0;padding:clamp(12px,1vw,24px);display:grid;grid-template-rows:auto minmax(140px,20fr) minmax(320px,36fr) minmax(130px,14fr) auto auto;gap:12px;overflow:hidden;}
+:fullscreen .screen.is-fullscreen > .mast,:fullscreen .screen.is-fullscreen > .charts,:fullscreen .screen.is-fullscreen > .collector-strip,:fullscreen .screen.is-fullscreen > .workfield,:fullscreen .screen.is-fullscreen > .business-followup,:fullscreen .screen.is-fullscreen > .notice {margin:0;height:auto;min-height:0;}
 :fullscreen .screen .chart-panel .plot,:fullscreen .screen .chart-panel:nth-child(2) .plot {height:100%;min-height:0;flex:1;}
 
 :fullscreen .screen .notice {justify-self:end;align-self:end;}
@@ -99,7 +99,7 @@ input,textarea,select {background:var(--surface);color:var(--ink);border-color:v
 :fullscreen .screen > .charts {grid-area:charts;}
 :fullscreen .screen > .collector-strip {grid-area:collector;}
 :fullscreen .screen > .workfield {grid-area:workfield;}
-:fullscreen .screen > .followup-panels {grid-area:followup;}
+:fullscreen .screen > .business-followup {grid-area:followup;}
 :fullscreen .screen > .notice {grid-area:notice;}
 :fullscreen .screen > .error,:fullscreen .screen > .success {position:fixed;top:60px;right:20px;max-width:480px;z-index:40;}
 :fullscreen .screen > .chart-records,:fullscreen .screen > .detail {position:fixed;inset:70px 24px 24px;overflow:auto;z-index:30;}
