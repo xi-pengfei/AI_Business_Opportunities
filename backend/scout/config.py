@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     searxng_engines: str = "duckduckgo,brave"
     searxng_url: str = "http://searxng:8080"
+    # 时间过滤（day/month/year）。360search 等引擎不提供日期，会被过滤成 0 条，留空则不过滤。
+    searxng_time_range: str = ""
     xiaohongshu_url: str = "http://xiaohongshu:18060"
     xiaohongshu_token: str = ""
     dingtalk_enabled: bool = False

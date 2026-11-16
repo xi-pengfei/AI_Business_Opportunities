@@ -133,17 +133,20 @@ def search_searxng(payload, config):
             engines &= enabled
             if not engines:
                 raise ProviderError("searxng_engines_disabled")
+            params = {
+                "q": payload["query"],
+                "format": "json",
+                "language": "zh-CN",
+                "categories": "general",
+                "engines": ",".join(sorted(engines)),
+                "pageno": payload.get("page", 1),
+            }
+            time_range = payload.get("time_range") or getattr(config, "searxng_time_range", "") or ""
+            if time_range:
+                params["time_range"] = time_range
             response = client.get(
                 config.searxng_url.rstrip("/") + "/search",
-                params={
-                    "q": payload["query"],
-                    "format": "json",
-                    "language": "zh-CN",
-                    "categories": "general",
-                    "engines": ",".join(sorted(engines)),
-                    "pageno": payload.get("page", 1),
-                    "time_range": "month",
-                },
+                params=params,
             )
         if response.status_code in (403, 429):
             raise ProviderError("searxng_rate_limited")
