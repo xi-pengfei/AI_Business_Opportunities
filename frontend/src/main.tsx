@@ -544,7 +544,7 @@ function App() {
   const liveTasks = tasks.filter(t=>["running","queued","retry_wait"].includes(t.status)).length;
   const crumb = ({
     rules:["网络商机","商机主题列表"],
-    customers:["客户监控","客户信号"],
+    customers:["客户动向","动向明细"],
     xiaohongshu:["小红书","账号与关键词"],
     tasks:["任务运行","实时任务"],
     information:["信息库","已入库档案"],
@@ -557,7 +557,7 @@ function App() {
   );
   const NAV:Array<[string,string,string[]]>= [
     ["rules","网络商机",["M3 17l5-5 4 3 5-7 4 4","M3 21h18"]],
-    ["customers","客户监控",["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2","M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z","M22 21v-2a4 4 0 0 0-3-3.87"]],
+    ["customers","客户动向",["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2","M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z","M22 21v-2a4 4 0 0 0-3-3.87"]],
     ["xiaohongshu","小红书",["M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-5 4z","M8 9h8","M8 12h5"]],
     ["tasks","任务运行",["M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18","M12 7v5l3.5 2"]],
     ["information","信息库",["M4 19.5A2.5 2.5 0 0 1 6.5 17H20","M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"]],
