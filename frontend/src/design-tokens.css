@@ -436,3 +436,17 @@
 .screen .lib-card .lib-foot .who {color:#8dd4de;}
 .screen .lib-card .lib-badge {position:absolute;top:8px;right:10px;font-size:9px;letter-spacing:1px;color:#0b0f14;background:#39d98a;border-radius:999px;padding:1px 7px;font-weight:600;z-index:2;}
 @media (prefers-reduced-motion: reduce) {.screen .lib-track {animation:none;}}
+
+/* ---------- 商机跟进：同款磨砂玻璃（保留表格形态） ---------- */
+.screen .panel.business-followup {position:relative;overflow:hidden;}
+.screen .panel.business-followup .lib-aurora {opacity:.45;}
+.screen .panel.business-followup > h2,
+.screen .panel.business-followup > .table-scroll {position:relative;z-index:2;}
+.screen .business-followup .followup-table {border-collapse:separate;border-spacing:0;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.14);border-radius:10px;overflow:hidden;box-shadow:0 5px 16px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.18);-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4);}
+.screen .business-followup .followup-table thead {background:transparent;}
+.screen .business-followup .followup-table thead th {background:rgba(255,255,255,.06);color:#c3dde6;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,.12);}
+.screen .business-followup .followup-table tbody td {border-bottom:1px solid rgba(255,255,255,.07);background:transparent;}
+.screen .business-followup .followup-table tbody tr:last-child td {border-bottom:none;}
+.screen .business-followup .followup-table tbody tr:hover td {background:rgba(141,212,222,.08);}
+.screen .business-followup .text-button {color:rgba(242,247,250,.92);}
+.screen .business-followup .text-button:hover {color:var(--accent-soft);}

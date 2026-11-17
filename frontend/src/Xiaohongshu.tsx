@@ -1,9 +1,8 @@
 import {useEffect, useState} from 'react';
 import {errors} from './types';
-import type {Rule} from './types';
+import type {Request, Rule} from './types';
 import './xiaohongshu.css';
 
-type Request = (path:string, options?:RequestInit)=>Promise<any>;
 const defaults='寻找软件开发团队\nERP系统改造 求推荐\nAI智能体开发需求';
 export function Xiaohongshu({request}:{request:Request}) {
   const [rules,setRules]=useState<Rule[]|null>(null);

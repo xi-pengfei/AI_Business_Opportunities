@@ -60,7 +60,7 @@ def start_rule(db, rule, key, scheduled=False):
         from scout.models import Customer
         customer = db.get(Customer, rule.customer_id)
         if customer:
-            customer_snapshot = {"name": customer.name, "aliases": customer.aliases, "website": customer.website}
+            customer_snapshot = {"name": customer.name, "aliases": customer.aliases}
     task = enqueue(
         db,
         kind="search",

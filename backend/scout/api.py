@@ -914,9 +914,7 @@ async def stream(
 class CustomerInput(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     aliases: list[str] = Field(default_factory=list, max_length=5)
-    website: str | None = Field(default=None, max_length=1000)
     reference_urls: list[str] = Field(default_factory=list, max_length=10)
-    identity_source: str | None = Field(default=None, max_length=1000)
     # 批量导入时可指定对接人（仅管理员）；不填默认为创建人
     owner_user_id: str | None = Field(default=None, max_length=36)
 
@@ -948,17 +946,6 @@ class CustomerInput(BaseModel):
         if any(not 2 <= len(v.strip()) <= 120 for v in value):
             raise ValueError("其他叫法须为2至120个字")
         return list(dict.fromkeys(v.strip() for v in value))
-
-    @field_validator("website", "identity_source")
-    @classmethod
-    def safe_url(cls, value):
-        from scout.providers import ProviderError, canonical_url
-        if not value:
-            return None
-        try:
-            return canonical_url(value)
-        except ProviderError:
-            raise ValueError("请输入有效的公开网址") from None
 
 
 @app.get("/api/v1/customers", dependencies=[Depends(auth.current_user)])

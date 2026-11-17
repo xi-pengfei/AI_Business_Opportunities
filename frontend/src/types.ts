@@ -1,3 +1,4 @@
+export type Request = (path: string, options?: RequestInit) => Promise<any>;
 export type Fragment = { index: number; text: string; start: number; end: number; before: string; after: string };
 export type Item = {
   id: string;

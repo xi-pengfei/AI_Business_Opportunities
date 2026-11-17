@@ -18,9 +18,7 @@ class Customer(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(120), unique=True)
     aliases: Mapped[list] = mapped_column(JSON, default=list)
-    website: Mapped[str | None] = mapped_column(Text)
     reference_urls: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
-    identity_source: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
 
 

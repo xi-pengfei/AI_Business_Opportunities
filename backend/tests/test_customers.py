@@ -118,13 +118,9 @@ def test_customer_aging_and_public_purge_preserve_evidence(client, database):
         assert db.get(Task,task.id).payload.get('raw_content')
 
 
-def test_official_identity_requires_exact_host_and_unknown_date_can_be_verified(client, database):
+def test_unknown_date_can_be_verified_on_recollection(client, database):
     c=customer(client)
     with database.begin() as db:
-        target=db.get(Customer,c['id'])
-        target.website='https://www.example.com/'
-        assert classify(target,'新建生产基地','公司新建生产基地扩大产能',url='https://example.com/news')[0]
-        assert classify(target,'新建生产基地','公司新建生产基地扩大产能',url='https://example.com.evil.test/news')[1]=='customer_mismatch'
         result, task=ingest(db,c['id'],published='unknown')
         assert result['quality_status']=='archived'
         task.payload={**task.payload,'published_at':datetime.now(ZONE).date().isoformat()}
@@ -180,8 +176,8 @@ def test_media_reference_domain_does_not_imply_customer_identity():
     from types import SimpleNamespace
 
     from scout.customers import classify
-    customer=SimpleNamespace(name='示例科技',aliases=[],website=None,reference_urls=['https://news.example.org/account'])
-    result,reason=classify(customer,'另一企业扩产','另一企业新建生产基地。','2026-11-15','https://news.example.org/unrelated')
+    customer=SimpleNamespace(name='示例科技',aliases=[],reference_urls=['https://news.example.org/account'])
+    result,reason=classify(customer,'另一企业扩产','另一企业新建生产基地。','2026-11-15')
     assert result is None and reason=='customer_mismatch'
 
 

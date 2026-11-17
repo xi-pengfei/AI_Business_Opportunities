@@ -42,17 +42,13 @@ def signal_window(now=None):
             CustomerSignal.created_at > now - 30 * 86400)
 
 
-def classify(customer, title, raw, published_at=None, url=None):
+def classify(customer, title, raw, published_at=None):
     soup = BeautifulSoup(raw, "html.parser")
     for tag in soup(["script", "style", "nav", "header", "footer", "noscript"]):
         tag.decompose()
     evidence = title + " " + soup.get_text(" ", strip=True)
+    # 身份只认名称/其他叫法命中正文；参考网址只影响搜索词，不代表客户身份。
     matched = next((n for n in [customer.name, *customer.aliases] if n in evidence), None)
-    if not matched and customer.website and url:
-        host = (urlsplit(url).hostname or "").removeprefix("www.")
-        official = (urlsplit(customer.website).hostname or "").removeprefix("www.")
-        if host and host == official:
-            matched = customer.name
     if not matched:
         return None, "customer_mismatch"
     topic = next((label for label, pattern in TOPICS if re.search(pattern, evidence, re.I)), None)
@@ -77,7 +73,7 @@ def save_signal(db, task):
         raise ProviderError("empty_content")
     from types import SimpleNamespace
     identity = SimpleNamespace(**p["customer_snapshot"]) if p.get("customer_snapshot") else customer
-    quality, reason = classify(identity, p["title"], raw, p.get("published_at"), url)
+    quality, reason = classify(identity, p["title"], raw, p.get("published_at"))
     if reason:
         emit(db, task, "customer.discarded", customer_id=customer.id, reason=reason)
         return {"discarded": True, "reason": reason}
@@ -136,7 +132,7 @@ def customer_records(db):
         newest = db.scalar(select(CustomerSignal).where(CustomerSignal.customer_id == customer.id,
             *signal_window()).order_by(CustomerSignal.created_at.desc()).limit(1))
         output.append({"id": customer.id, "name": customer.name, "aliases": customer.aliases,
-            "website": customer.website, "reference_urls": customer.reference_urls, "identity_source": customer.identity_source,
+            "reference_urls": customer.reference_urls,
             "rule_id": rule.id, "enabled": rule.enabled,
             "query": latest.payload.get("query") if latest else None,
             "state": latest.status if latest else "queued",

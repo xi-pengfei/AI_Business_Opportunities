@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { errors } from "./types";
+import { errors, type Request } from "./types";
 
-type Request = (path: string, options?: RequestInit) => Promise<any>;
-type Customer = { id: string; name: string; aliases: string[]; website?: string; reference_urls?:string[]; rule_id: string; enabled: boolean; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; signal_count?: number; owner_user_id?: string | null; owner_name?: string | null; next_run_at: number };
+type Customer = { id: string; name: string; aliases: string[]; reference_urls?:string[]; rule_id: string; enabled: boolean; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; signal_count?: number; owner_user_id?: string | null; owner_name?: string | null; next_run_at: number };
 type UserRow = { id: string; display_name: string; username: string; is_active: boolean };
 type Signal = { id: string; customer_name: string; title: string; url?: string; topic: string; fragments?: {text:string}[]; published_at?: string; created_at: number; content_kind?: string };
 type Draft = { id?: string; name: string; aliases: string; urls: string };
 const empty: Draft = { name: "", aliases: "", urls: "" };
+const PAGE = 30;
 const dateTime = (value?: number) => value ? new Date(value * 1000).toLocaleString("zh-CN", {timeZone:"Asia/Shanghai", hour12:false}) : "—";
 const PlusIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 5v14M5 12h14"/></svg>;
 const EditIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>;
@@ -119,7 +119,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
   function focus(){requestAnimationFrame(()=>{heading.current?.focus();});}
   function newCustomer(){setDraft(empty);setError("");setMessage("");setOpen(true);focus();}
   function edit(c:Customer){
-    setDraft({id:c.id,name:c.name,aliases:c.aliases.join("\n"),urls:(c.reference_urls?.length?c.reference_urls:c.website?[c.website]:[]).join("\n")});
+    setDraft({id:c.id,name:c.name,aliases:c.aliases.join("\n"),urls:(c.reference_urls??[]).join("\n")});
     setError("");setMessage("");setOpen(true);focus();
   }
   function cancel(){setDraft(empty);setError("");setMessage("");setOpen(false);}
@@ -148,7 +148,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
 
   async function save(){
     if(!form.current?.reportValidity())return;
-    const body={name:draft.name,aliases:draft.aliases.split(/[\n，,]/).map(s=>s.trim()).filter(Boolean),reference_urls:draft.urls,website:null};
+    const body={name:draft.name,aliases:draft.aliases.split(/[\n，,]/).map(s=>s.trim()).filter(Boolean),reference_urls:draft.urls};
     setBusy(true);setError("");
     try{
       if(draft.id){
@@ -324,10 +324,10 @@ export function Customers({request, manage = false}: {request: Request; manage?:
           </div>)}
         </div>
         <div className="dr-foot">
-          <span className="dr-meta">共 {detailOf.total} 条 · 第 {detailOf.offset/30+1} 页</span>
+          <span className="dr-meta">共 {detailOf.total} 条 · 第 {detailOf.offset/PAGE+1} 页</span>
           <div className="chart-pager">
-            <button className="btn btn-sm" disabled={detailOf.loading||!detailOf.offset} onClick={()=>setDetailOf(p=>p&&{...p,offset:Math.max(0,p.offset-30),loading:true})}>上一页</button>
-            <button className="btn btn-sm" disabled={detailOf.loading||detailOf.offset+30>=detailOf.total} onClick={()=>setDetailOf(p=>p&&{...p,offset:p.offset+30,loading:true})}>下一页</button>
+            <button className="btn btn-sm" disabled={detailOf.loading||!detailOf.offset} onClick={()=>setDetailOf(p=>p&&{...p,offset:Math.max(0,p.offset-PAGE),loading:true})}>上一页</button>
+            <button className="btn btn-sm" disabled={detailOf.loading||detailOf.offset+PAGE>=detailOf.total} onClick={()=>setDetailOf(p=>p&&{...p,offset:p.offset+PAGE,loading:true})}>下一页</button>
           </div>
           <button type="button" className="btn btn-primary" onClick={closeDetail}>关闭</button>
         </div>
@@ -390,11 +390,11 @@ function SignalsReadOnly({request,error,setError}:{request:Request;error:string;
         </table>
       </div>
       {result&&!items.length&&<div className="empty">近 30 天暂无动向。</div>}
-      {result&&result.total>30&&<div className="table-foot">
-        <span>共 {result.total} 条 · 第 {offset/30+1} 页</span>
+      {result&&result.total>PAGE&&<div className="table-foot">
+        <span>共 {result.total} 条 · 第 {offset/PAGE+1} 页</span>
         <div className="chart-pager">
-          <button className="btn btn-sm" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-30))}>上一页</button>
-          <button className="btn btn-sm" disabled={offset+30>=result.total} onClick={()=>setOffset(offset+30)}>下一页</button>
+          <button className="btn btn-sm" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-PAGE))}>上一页</button>
+          <button className="btn btn-sm" disabled={offset+PAGE>=result.total} onClick={()=>setOffset(offset+PAGE)}>下一页</button>
         </div>
       </div>}
       {!result&&<div className="empty">正在读取动向…</div>}
