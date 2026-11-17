@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { CollectorMonitor } from "./CollectorMonitor";
 import "./collector-monitor.css";
-import { Charts } from "./Charts";
+import { Charts, FlowPanel, HitRatePanel, SourcePanel } from "./Charts";
 import type { ChartSelection } from "./Charts";
+import { RegionMap } from "./RegionMap";
 import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
 import {SourceFeed} from "./SourceFeed";
@@ -199,7 +200,7 @@ function App() {
       .catch(() => {});
   }, []);
   const [page, setPage] = useState(
-    ["display", "rules", "customers", "xiaohongshu", "tasks", "information", "users"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
+    ["display", "rules", "customers", "xiaohongshu", "tasks", "information", "analysis", "users"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
   );
   const demo = false;
   const [fullscreen,setFullscreen]=useState(!!document.fullscreenElement);
@@ -548,6 +549,7 @@ function App() {
     xiaohongshu:["小红书","账号与关键词"],
     tasks:["任务运行","实时任务"],
     information:["信息库","已入库档案"],
+    analysis:["系统分析","命中率与地域分布"],
     users:["系统设置","用户管理"],
   } as Record<string,[string,string]>)[page]||["管理台",""];
   const navIcon=(paths:string[])=>(
@@ -561,6 +563,7 @@ function App() {
     ["xiaohongshu","小红书",["M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-5 4z","M8 9h8","M8 12h5"]],
     ["tasks","任务运行",["M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18","M12 7v5l3.5 2"]],
     ["information","信息库",["M4 19.5A2.5 2.5 0 0 1 6.5 17H20","M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"]],
+    ["analysis","系统分析",["M3 3v18h18","M8 16v-5","M13 16V8","M18 16v-3"]],
     ["users","用户管理",["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2","M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z","M23 21v-2a4 4 0 0 0-3-3.87","M16 3.13a4 4 0 0 1 0 7.75"]],
   ];
   return (
@@ -616,6 +619,7 @@ function App() {
 
               <div className="workfield stage-grid">
                 <section className="panel terminal">
+                  <div className="lib-aurora" aria-hidden="true"><i /><i /><i /><i /></div>
                   <h2>信息来源</h2>
                   <SourceFeed items={terminalFeed} moving={moving} landed={landed} />
                   <p>
@@ -680,7 +684,7 @@ function App() {
                   }
                 />
               </div>
-              <div className="charts"><Charts data={data} onSelect={setChartSelection} dark /></div>
+              <div className="charts charts-2"><SourcePanel data={data} dark /><FlowPanel data={data} dark /></div>
               <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
             </>
           )}
@@ -784,6 +788,12 @@ function App() {
                 </p>
               )}
               {!data && <div className="empty">正在读取运行状态…</div>}
+              {page === "analysis" && data && (
+                <div className="analysis-grid">
+                  <HitRatePanel data={data} />
+                  <RegionMap data={data} />
+                </div>
+              )}
               {page === "xiaohongshu" && <Xiaohongshu request={request} me={me} />}
               {page === "customers" && <Customers request={request} manage />}
               {page === "rules" && <NetworkRules rules={rules} request={request} onSaved={refresh} liveTasks={liveTasks} me={me} />}

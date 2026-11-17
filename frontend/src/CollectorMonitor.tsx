@@ -35,6 +35,7 @@ export function CollectorMonitor({collectors = [], stale}: {collectors: Collecto
   const rows = rotateRows(collectors, offset);
   const history = collectors[0]?.history || [];
   return <div className="collector-monitor">
+    <div className="lib-aurora" aria-hidden="true"><i /><i /><i /><i /></div>
     <section className="collector-heat">
       <div className="cm-axis"><span>{history.length ? time(history[0].start).slice(0,5) : '—'}</span><span>{history.length ? time(history[12].start).slice(0,5) : '—'}</span><span>当前时段</span></div>
       <div className="cm-heat-scroll" ref={heat} tabIndex={0} role="region" aria-label="采集运行历史" onScroll={e=>{if(scroll.current && e.currentTarget.matches(':hover, :focus-within')) scroll.current.scrollTop=e.currentTarget.scrollTop;}}>
