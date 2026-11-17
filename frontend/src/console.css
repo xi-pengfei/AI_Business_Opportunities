@@ -1705,13 +1705,10 @@ button.console-side-foot:hover {
   color: var(--ink);
   width: 220px;
 }
-.cell-name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.cell-name-line .cell-link { padding: 0; }
 /* 客户行单行化：不换行，超出省略 */
 .cell-line { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .cell-line > * { flex: 0 0 auto; white-space: nowrap; }
 .cell-line .cell-link { padding: 0; overflow: hidden; text-overflow: ellipsis; }
-.count-pill { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; background: var(--accent-tint); color: var(--accent); font-size: 12px; font-weight: 600; line-height: 18px; }
 /* 名称后的修改入口：默认隐藏，悬浮行时出现 */
 .edit-name { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: none; background: none; color: var(--muted); border-radius: 6px; opacity: 0; transition: opacity .15s ease, color .15s ease, background .15s ease; }
 .edit-name svg { width: 13px; height: 13px; }

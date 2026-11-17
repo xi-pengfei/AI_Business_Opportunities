@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { errors } from "./types";
 
 type Request = (path: string, options?: RequestInit) => Promise<any>;
-type Customer = { id: string; name: string; aliases: string[]; website?: string; reference_urls?:string[]; rule_id: string; enabled: boolean; query?: string; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; signal_count?: number; owner_user_id?: string | null; owner_name?: string | null; next_run_at: number };
+type Customer = { id: string; name: string; aliases: string[]; website?: string; reference_urls?:string[]; rule_id: string; enabled: boolean; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; signal_count?: number; owner_user_id?: string | null; owner_name?: string | null; next_run_at: number };
 type UserRow = { id: string; display_name: string; username: string; is_active: boolean };
-type Signal = { id: string; customer_name: string; title: string; url?: string; topic: string; fragments?: {text:string}[]; published_at?: string; created_at: number; matched_name?: string; content_kind?: string };
+type Signal = { id: string; customer_name: string; title: string; url?: string; topic: string; fragments?: {text:string}[]; published_at?: string; created_at: number; content_kind?: string };
 type Draft = { id?: string; name: string; aliases: string; urls: string };
 const empty: Draft = { name: "", aliases: "", urls: "" };
 const dateTime = (value?: number) => value ? new Date(value * 1000).toLocaleString("zh-CN", {timeZone:"Asia/Shanghai", hour12:false}) : "—";
@@ -96,7 +96,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
     const onKey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!busy){setOpen(false);setDetailOf(null);setAssignOpen(false);}};
     addEventListener("keydown",onKey);
     return()=>removeEventListener("keydown",onKey);
-  });
+  },[open,detailOf,assignOpen,busy]);
 
   // 打开「指定对接人」面板时拉取可指派的用户（仅启用的）
   useEffect(() => {
@@ -213,7 +213,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
       </button>)}
       <button type="button" className="btn btn-primary btn-sm seg-new" onClick={newCustomer}><PlusIcon/>新增客户动向</button>
       <div className="search-box">
-        <input type="search" aria-label="搜索客户" placeholder="搜索客户名称或简称…" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}}/>
+        <input type="search" aria-label="搜索客户" placeholder="搜索客户名称或其他叫法…" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}}/>
       </div>
     </div>
 

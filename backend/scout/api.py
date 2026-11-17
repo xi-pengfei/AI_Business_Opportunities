@@ -944,7 +944,7 @@ class CustomerInput(BaseModel):
     @classmethod
     def clean_aliases(cls, value):
         if any(not 2 <= len(v.strip()) <= 120 for v in value):
-            raise ValueError("简称须为2至120个字")
+            raise ValueError("其他叫法须为2至120个字")
         return list(dict.fromkeys(v.strip() for v in value))
 
     @field_validator("website", "identity_source")
