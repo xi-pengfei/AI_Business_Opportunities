@@ -212,3 +212,29 @@ def test_batch_assign_owner_updates_customer_and_rule(client, database):
                        json={'customer_ids': [c['id']], 'owner_user_id': 'nope'}).status_code == 422
     assert client.post('/api/v1/customers/batch-owner',
                        json={'customer_ids': ['missing'], 'owner_user_id': owner_id}).status_code == 404
+
+
+def test_create_customer_with_owner_user_id(client, database):
+    r = client.post('/api/v1/users', json={'username':'导入对接人','password':'passw0rd123',
+                                           'display_name':'李四','role':'member'})
+    assert r.status_code == 201, r.text
+    owner_id = r.json()['id']
+
+    # 管理员创建时直接指定对接人
+    r = client.post('/api/v1/customers',
+                    json={'name':'导入客户股份有限公司','owner_user_id':owner_id})
+    assert r.status_code == 201, r.text
+    with database() as db:
+        assert db.get(Rule, r.json()['rule_id']).owner_user_id == owner_id
+
+    # 不存在的用户 → 422
+    assert client.post('/api/v1/customers',
+                       json={'name':'另一家客户股份有限公司','owner_user_id':'nope'}).status_code == 422
+
+    # PATCH 忽略 owner_user_id，不报错也不改对接人
+    rows = client.get('/api/v1/customers').json()
+    row = next(x for x in rows if x['name'] == '导入客户股份有限公司')
+    assert client.patch('/api/v1/customers/'+row['id'],
+                        json={'name':'导入客户股份有限公司','owner_user_id':'whatever'}).status_code == 200
+    with database() as db:
+        assert db.get(Rule, row['rule_id']).owner_user_id == owner_id

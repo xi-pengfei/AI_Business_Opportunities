@@ -915,6 +915,8 @@ class CustomerInput(BaseModel):
     website: str | None = Field(default=None, max_length=1000)
     reference_urls: list[str] = Field(default_factory=list, max_length=10)
     identity_source: str | None = Field(default=None, max_length=1000)
+    # 批量导入时可指定对接人（仅管理员）；不填默认为创建人
+    owner_user_id: str | None = Field(default=None, max_length=36)
 
     @field_validator("reference_urls", mode="before")
     @classmethod
@@ -969,14 +971,23 @@ def create_customer(body: CustomerInput, user=Depends(auth.current_user)):
     from sqlalchemy.exc import IntegrityError
 
     from scout.customers import queries
+    owner_user_id = user.id
+    if body.owner_user_id:
+        if user.role != "admin":
+            raise HTTPException(403, "只有管理员可以在创建时指定对接人")
+        with Session() as check:
+            owner = check.get(User, body.owner_user_id)
+        if owner is None or not owner.is_active:
+            raise HTTPException(422, "对接人不存在或已停用")
+        owner_user_id = body.owner_user_id
     try:
         with Session.begin() as db:
-            customer = Customer(**body.model_dump())
+            customer = Customer(**body.model_dump(exclude={"owner_user_id"}))
             db.add(customer)
             db.flush()
             rule = Rule(name=customer.name, query=queries(customer), provider="searxng",
                 source_type="customer_watch", customer_id=customer.id, enabled=True,
-                interval_seconds=0, max_results=20, owner_user_id=user.id)
+                interval_seconds=0, max_results=20, owner_user_id=owner_user_id)
             db.add(rule)
             db.flush()
             return {**record(customer), "rule_id": rule.id, "enabled": True}
@@ -998,6 +1009,8 @@ def update_customer(customer_id: str, body: CustomerInput, user=Depends(auth.cur
             if rule is not None:
                 own_or_admin(rule, user)
             for key in body.model_fields_set:
+                if key == "owner_user_id":
+                    continue  # 对接人走 batch-owner 或创建时指定，不在修改表单里改
                 setattr(customer, key, getattr(body, key))
             rule.name, rule.query = customer.name, queries(customer)
             rule.version += 1
