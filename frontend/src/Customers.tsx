@@ -15,8 +15,8 @@ function statusOf(c: Customer): Status {
   if (c.error_code) return { cls: "st-failed", text: "入口受限", note: errors[c.error_code] || "搜索入口等待恢复", tab: "attention" };
   if (c.state === "running") return { cls: "st-on", text: "正在搜索", tab: "on" };
   if (!c.last_search_at) return { cls: "st-wait", text: "等待首次搜索", tab: "attention" };
-  if (c.next_run_at > Date.now() / 1000) return { cls: "st-wait", text: "等待复查新增", tab: "on" };
-  return { cls: "st-on", text: "持续监测中", tab: "on" };
+  // 监测中即可：下一轮复查时间放进悬浮提示，不再单列一个看不懂的状态
+  return { cls: "st-on", text: "监测中", note: `下次复查：${dateTime(c.next_run_at)}`, tab: "on" };
 }
 
 type Tab = "all" | "on" | "attention" | "off";
@@ -189,10 +189,10 @@ export function Customers({request, manage = false}: {request: Request; manage?:
         <table className="rule-table fit">
           <thead><tr>
             <th style={{width:'6%'}}>序号</th>
-            <th style={{width:'47%'}}>客户</th>
-            <th style={{width:'16%'}}>最近搜索</th>
-            <th style={{width:'16%'}}>最后新增</th>
-            <th style={{width:'15%'}}>操作</th>
+            <th style={{width:'40%'}}>客户</th>
+            <th style={{width:'18%'}}>最近搜索</th>
+            <th style={{width:'18%'}}>最后新增</th>
+            <th style={{width:'18%'}}>操作</th>
           </tr></thead>
           <tbody>
             {pageRows.map((c,i)=>{
@@ -200,12 +200,10 @@ export function Customers({request, manage = false}: {request: Request; manage?:
               return <tr key={c.id}>
                 <td className="idx-cell">{(current-1)*pageSize+i+1}</td>
                 <td>
-                  <div className="cell-line" title={c.aliases.length?`别名：${c.aliases.join(" / ")}`:undefined}>
+                  <div className="cell-line">
                     <button type="button" className="cell-link" disabled={busy} onClick={()=>openDetail(c)} title="查看该客户的动向明细">{c.name}</button>
-                    <span className={"st "+s.cls}>{s.text}</span>
+                    <span className={"st "+s.cls} title={s.note}>{s.text}</span>
                     <span className="count-pill" title="近 30 天入库信息数量">{c.signal_count ?? 0} 条</span>
-                    {c.aliases.length>0&&c.aliases.slice(0,2).map(a=><span className="chip" key={a}>{a}</span>)}
-                    {c.aliases.length>2&&<span className="chip">+{c.aliases.length-2}</span>}
                   </div>
                 </td>
                 <td className="muted">{dateTime(c.last_search_at)}</td>
