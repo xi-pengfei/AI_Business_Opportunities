@@ -1692,6 +1692,10 @@ button.console-side-foot:hover {
   border-color: var(--accent);
 }
 .search-box { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* 新增按钮贴在搜索框左侧：用 margin-left:auto 占住，让搜索框收回正常间距 */
+.seg-tabs .seg-new { flex: none; margin-left: auto; }
+.seg-tabs .seg-new + .search-box { margin-left: 0; }
+.seg-tabs .seg-new svg { width: 14px; height: 14px; }
 .search-box input {
   border: 1px solid var(--line);
   border-radius: 8px;

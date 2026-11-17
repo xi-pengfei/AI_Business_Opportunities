@@ -165,9 +165,6 @@ export function Customers({request, manage = false}: {request: Request; manage?:
         <h1 className="page-title">客户动向</h1>
         <p className="page-sub">把命中商机归到客户身上，持续追踪招采、扩产、产能、信息化等信号变化。填写企业全称即可开始，参考网址用于辅助搜索。</p>
       </div>
-      <div className="page-actions">
-        <button type="button" className="btn btn-primary" onClick={newCustomer}><PlusIcon/>新增客户动向</button>
-      </div>
     </div>
 
     <div className="kpis">
@@ -180,6 +177,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
       {TABS.map(t=><button key={t.key} type="button" role="tab" aria-selected={tab===t.key} className={tab===t.key?"active":""} onClick={()=>{setTab(t.key);setPage(1);}}>
         {t.label}<span className="n">{counts[t.key]}</span>
       </button>)}
+      <button type="button" className="btn btn-primary btn-sm seg-new" onClick={newCustomer}><PlusIcon/>新增客户动向</button>
       <div className="search-box">
         <input type="search" aria-label="搜索客户" placeholder="搜索客户名称或简称…" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}}/>
       </div>
