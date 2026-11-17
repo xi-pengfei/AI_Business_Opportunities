@@ -388,3 +388,18 @@
 .screen .information-flow-table.slim-table th:nth-child(4) {width:16%!important;}
 .screen .fragment-tag {background:rgba(141,212,222,.09);border-color:rgba(141,212,222,.22);color:#c3dde6;}
 .screen .text-button:hover {color:var(--accent-soft);}
+
+/* ---------- 竖屏全屏：图表行加高到能看清、监控两段并排省高、信息库行距撑满 ---------- */
+@media (max-aspect-ratio: 99/100) {
+  :fullscreen .screen.is-fullscreen {grid-template-rows:auto auto minmax(420px,48fr) minmax(280px,26fr) auto auto;}
+  :fullscreen .screen .charts {grid-template-columns:1fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);height:100%;}
+  :fullscreen .screen .chart-panel {min-height:0;height:100%;}
+  :fullscreen .screen .collector-monitor {grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);}
+  :fullscreen .screen .collector-monitor > section + section {border-left:1px solid #293047;border-top:0;}
+  :fullscreen .screen .library .fragment-table td {padding:9px 6px;}
+}
+/* ---------- 横屏全屏：四图一排，舞台与图表比例重分配 ---------- */
+@media (min-aspect-ratio: 101/100) {
+  :fullscreen .screen.is-fullscreen {grid-template-rows:auto auto minmax(300px,44fr) minmax(190px,22fr) auto auto;}
+  :fullscreen .screen .charts {grid-template-columns:repeat(4,minmax(0,1fr));}
+}
