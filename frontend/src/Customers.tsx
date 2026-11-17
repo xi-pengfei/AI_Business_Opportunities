@@ -249,7 +249,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
         </div>
         <div className="dr-foot">
           <button type="button" className="btn" onClick={cancel} disabled={busy}>取消</button>
-          <button type="submit" form="customer-form" className="btn btn-primary" disabled={busy}>{busy?"正在保存…":draft.id?"保存修改":"保存并开始监测"}</button>
+          <button type="submit" form="customer-form" className="btn btn-primary" disabled={busy}>{busy?"保存中…":draft.id?"修改":"开始监测"}</button>
         </div>
       </aside>
     </div>}
