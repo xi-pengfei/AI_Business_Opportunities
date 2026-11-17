@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { errors } from "./types";
 
 type Request = (path: string, options?: RequestInit) => Promise<any>;
-type Customer = { id: string; name: string; aliases: string[]; website?: string; reference_urls?:string[]; rule_id: string; enabled: boolean; query?: string; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; signal_count?: number; next_run_at: number };
+type Customer = { id: string; name: string; aliases: string[]; website?: string; reference_urls?:string[]; rule_id: string; enabled: boolean; query?: string; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; signal_count?: number; owner_user_id?: string | null; owner_name?: string | null; next_run_at: number };
+type UserRow = { id: string; display_name: string; username: string; is_active: boolean };
 type Signal = { id: string; customer_name: string; title: string; url?: string; topic: string; fragments?: {text:string}[]; published_at?: string; created_at: number; matched_name?: string };
 type Draft = { id?: string; name: string; aliases: string; urls: string };
 const empty: Draft = { name: "", aliases: "", urls: "" };
@@ -52,6 +53,11 @@ export function Customers({request, manage = false}: {request: Request; manage?:
   const [detailOf, setDetailOf] = useState<{customer: Customer; signals: Signal[]; total: number; offset: number; loading: boolean} | null>(null);
   const detailTitle = useRef<HTMLHeadingElement>(null);
   const [evidence, setEvidence] = useState<{id: string; title: string; raw_content: string; content_kind: string} | null>(null);
+  // 批量指定对接人
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
@@ -86,11 +92,19 @@ export function Customers({request, manage = false}: {request: Request; manage?:
   },[]);
 
   useEffect(() => {
-    if(!open && !detailOf)return;
-    const onKey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!busy){setOpen(false);setDetailOf(null);}};
+    if(!open && !detailOf && !assignOpen)return;
+    const onKey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!busy){setOpen(false);setDetailOf(null);setAssignOpen(false);}};
     addEventListener("keydown",onKey);
     return()=>removeEventListener("keydown",onKey);
   });
+
+  // 打开「指定对接人」面板时拉取可指派的用户（仅启用的）
+  useEffect(() => {
+    if(!assignOpen)return;
+    let alive=true;
+    request("/users").then((d: UserRow[])=>{if(alive)setUsers(d.filter(u=>u.is_active));}).catch(()=>{});
+    return()=>{alive=false;};
+  },[assignOpen,request]);
 
   // 打开动向明细抽屉时按需拉取该客户的动态
   useEffect(() => {
@@ -111,6 +125,26 @@ export function Customers({request, manage = false}: {request: Request; manage?:
   function cancel(){setDraft(empty);setError("");setMessage("");setOpen(false);}
   function openDetail(c:Customer){setEvidence(null);setDetailOf({customer:c,signals:[],total:0,offset:0,loading:true});requestAnimationFrame(()=>{detailTitle.current?.focus();});}
   function closeDetail(){setDetailOf(null);setEvidence(null);}
+  function toggleSel(id:string){setSelected(p=>{const n=new Set(p); if(n.has(id))n.delete(id);else n.add(id); return n;});}
+  function selAllPage(){
+    setSelected(p=>{
+      const ids=pageRows.map(c=>c.id);
+      const all=ids.length>0&&ids.every(id=>p.has(id));
+      const n=new Set(p);
+      ids.forEach(id=>{ if(all)n.delete(id);else n.add(id); });
+      return n;
+    });
+  }
+  async function applyAssign(){
+    setBusy(true);setError("");
+    try{
+      await request("/customers/batch-owner",{method:"POST",body:JSON.stringify({customer_ids:[...selected],owner_user_id:assignTarget||null})});
+      const name=users.find(u=>u.id===assignTarget)?.display_name;
+      setMessage(assignTarget?`已把 ${selected.size} 家客户的对接人指定为 ${name}。`:`已清除 ${selected.size} 家客户的对接人。`);
+      setSelected(new Set());setAssignOpen(false);refresh();
+    }catch(e){setError(e instanceof Error?e.message:"批量指定失败");}
+    finally{setBusy(false);}
+  }
 
   async function save(){
     if(!form.current?.reportValidity())return;
@@ -183,22 +217,31 @@ export function Customers({request, manage = false}: {request: Request; manage?:
       </div>
     </div>
 
+    {selected.size>0&&<div className="batch-bar" role="toolbar" aria-label="批量操作">
+      <span>已选 <b>{selected.size}</b> 家客户</span>
+      <button type="button" className="btn btn-sm btn-primary" onClick={()=>{setAssignTarget("");setAssignOpen(true);}}>指定对接人</button>
+      <button type="button" className="btn btn-sm btn-quiet" onClick={()=>setSelected(new Set())}>取消选择</button>
+    </div>}
+
     <div className="table-card" ref={card}>
       <div className="table-scroll no-fade">
         <table className="rule-table fit">
           <thead><tr>
-            <th style={{width:'6%'}}>序号</th>
-            <th style={{width:'38%'}}>客户</th>
-            <th style={{width:'12%'}}>近 30 天入库</th>
-            <th style={{width:'16%'}}>最近搜索</th>
-            <th style={{width:'16%'}}>最后新增</th>
-            <th style={{width:'12%'}}>操作</th>
+            <th style={{width:'5%'}}>序号</th>
+            <th style={{width:'4%'}}><input type="checkbox" aria-label="全选本页" checked={pageRows.length>0&&pageRows.every(c=>selected.has(c.id))} onChange={selAllPage}/></th>
+            <th style={{width:'31%'}}>客户</th>
+            <th style={{width:'11%'}}>近 30 天入库</th>
+            <th style={{width:'14%'}}>最近搜索</th>
+            <th style={{width:'14%'}}>最后新增</th>
+            <th style={{width:'13%'}}>对接人</th>
+            <th style={{width:'8%'}}>操作</th>
           </tr></thead>
           <tbody>
             {pageRows.map((c,i)=>{
               const s=statusOf(c);
               return <tr key={c.id}>
                 <td className="idx-cell">{(current-1)*pageSize+i+1}</td>
+                <td className="sel-cell"><input type="checkbox" aria-label={`选择 ${c.name}`} checked={selected.has(c.id)} onChange={()=>toggleSel(c.id)} disabled={busy}/></td>
                 <td>
                   <div className="cell-line">
                     <button type="button" className="cell-link" disabled={busy} onClick={()=>edit(c)} title="修改该客户">{c.name}</button>
@@ -209,6 +252,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
                 <td><button type="button" className="count-cell" disabled={busy} onClick={()=>openDetail(c)} title="查看该客户的动向记录日志">{c.signal_count ?? 0} <small>条</small></button></td>
                 <td className="muted">{dateTime(c.last_search_at)}</td>
                 <td className="muted">{dateTime(c.last_found_at)}</td>
+                <td className="muted">{c.owner_name||"—"}</td>
                 <td><div className="actions">
                   <button className="btn btn-sm btn-quiet" disabled={busy} onClick={()=>toggle(c)}>{c.enabled?"停止监测":"开始监测"}</button>
                 </div></td>
@@ -224,7 +268,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
           <button className="btn btn-sm" disabled={current>=pages} onClick={()=>setPage(current+1)}>下一页</button>
         </div>
       </div>}
-      {!filtered.length && <div className="empty">{customers.length && (q||tab!=="all") ? "没有符合条件的客户，试试调整搜索词或状态筛选。" : "还没有客户。点击右上角「新增客户动向」，填写企业全称即可自动开始监测近 30 天动态。"}</div>}
+      {!filtered.length && <div className="empty">{customers.length && (q||tab!=="all") ? "没有符合条件的客户，试试调整搜索词或状态筛选。" : "还没有客户。点击「新增客户动向」，填写企业全称即可自动开始监测近 30 天动态。"}</div>}
     </div>
 
     {open && <div className="drawer-layer">
@@ -234,13 +278,13 @@ export function Customers({request, manage = false}: {request: Request; manage?:
         <div className="dr-head">
           <div className="dr-eyebrow">{draft.id?"修改":"新增"} · 客户动向</div>
           <h2 className="dr-title" id="customer-editor-title" tabIndex={-1} ref={heading}>{draft.id?"修改客户":"新增客户动向"}</h2>
-          <p className="dr-sub">填写企业全称即可，简称与参考网址帮助搜索更准。</p>
+          <p className="dr-sub">填写企业全称即可，其他叫法与参考网址帮助搜索更准。</p>
         </div>
         <div className="dr-body">
           <form ref={form} id="customer-form" aria-labelledby="customer-editor-title" onSubmit={e=>{e.preventDefault();void save();}}>
             <label htmlFor="customer-name">企业全称 <span className="opt">必填</span></label>
             <input id="customer-name" name="name" required minLength={2} maxLength={120} value={draft.name} disabled={busy} onChange={e=>setDraft({...draft,name:e.target.value})}/>
-            <label htmlFor="customer-alias">常用简称 <span className="opt">选填，每行一个，最多 5 个</span></label>
+            <label htmlFor="customer-alias">其他叫法 <span className="opt">选填，逗号或换行分隔，最多 5 个 · 用于扩大搜索命中范围</span></label>
             <textarea id="customer-alias" name="aliases" rows={3} maxLength={600} value={draft.aliases} disabled={busy} onChange={e=>setDraft({...draft,aliases:e.target.value})} placeholder={"例如：西安装备制造\n陕直股份"}/>
             <label htmlFor="customer-site">参考网址 <span className="opt">选填，逗号或换行分隔，最多 10 个</span></label>
             <textarea id="customer-site" name="reference_urls" rows={3} maxLength={10000} spellCheck={false} autoCapitalize="none" value={draft.urls} disabled={busy} onChange={e=>setDraft({...draft,urls:e.target.value})} placeholder={"https://企业官网\nhttps://自媒体主页"}/>
@@ -287,6 +331,33 @@ export function Customers({request, manage = false}: {request: Request; manage?:
             <button className="btn btn-sm" disabled={detailOf.loading||detailOf.offset+30>=detailOf.total} onClick={()=>setDetailOf(p=>p&&{...p,offset:p.offset+30,loading:true})}>下一页</button>
           </div>
           <button type="button" className="btn btn-primary" onClick={closeDetail}>关闭</button>
+        </div>
+      </aside>
+    </div>}
+
+    {assignOpen && <div className="drawer-layer">
+      <div className="drawer-backdrop" onClick={()=>setAssignOpen(false)}/>
+      <aside className="console-drawer" role="dialog" aria-modal="true" aria-labelledby="assign-owner-title">
+        <button type="button" className="dr-close" onClick={()=>setAssignOpen(false)} aria-label="关闭指定对接人">✕</button>
+        <div className="dr-head">
+          <div className="dr-eyebrow">批量操作 · 客户动向</div>
+          <h2 className="dr-title" id="assign-owner-title" tabIndex={-1}>指定对接人</h2>
+          <p className="dr-sub">为已选 {selected.size} 家客户统一指定对接人，后续按人推送时以此为准。</p>
+        </div>
+        <div className="dr-body">
+          {!users.length&&<p className="empty">正在读取用户列表…</p>}
+          <div className="assign-list" role="radiogroup" aria-label="选择对接人">
+            <button type="button" role="radio" aria-checked={assignTarget===""} className={"assign-item"+(assignTarget===""?" on":"")} onClick={()=>setAssignTarget("")}>
+              <span className="assign-dot" aria-hidden/><span className="assign-name">不指定（清除现有对接人）</span>
+            </button>
+            {users.map(u=><button type="button" role="radio" aria-checked={assignTarget===u.id} key={u.id} className={"assign-item"+(assignTarget===u.id?" on":"")} onClick={()=>setAssignTarget(u.id)}>
+              <span className="assign-dot" aria-hidden/><span className="assign-name">{u.display_name}</span>
+            </button>)}
+          </div>
+        </div>
+        <div className="dr-foot">
+          <button type="button" className="btn" onClick={()=>setAssignOpen(false)} disabled={busy}>取消</button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={()=>void applyAssign()}>{busy?"保存中…":"确认指定"}</button>
         </div>
       </aside>
     </div>}

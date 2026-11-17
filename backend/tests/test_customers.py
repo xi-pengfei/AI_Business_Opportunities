@@ -180,3 +180,35 @@ def test_media_reference_domain_does_not_imply_customer_identity():
     customer=SimpleNamespace(name='示例科技',aliases=[],website=None,reference_urls=['https://news.example.org/account'])
     result,reason=classify(customer,'另一企业扩产','另一企业新建生产基地。','2026-11-15','https://news.example.org/unrelated')
     assert result is None and reason=='customer_mismatch'
+
+
+def test_batch_assign_owner_updates_customer_and_rule(client, database):
+    c = customer(client)
+    r = client.post('/api/v1/users', json={'username':'对接人张三','password':'passw0rd123',
+                                           'display_name':'张三','role':'member'})
+    assert r.status_code == 201, r.text
+    owner_id = r.json()['id']
+
+    r = client.post('/api/v1/customers/batch-owner',
+                    json={'customer_ids': [c['id']], 'owner_user_id': owner_id})
+    assert r.status_code == 200 and r.json()['updated'] == 1
+    rows = client.get('/api/v1/customers').json()
+    row = next(x for x in rows if x['id'] == c['id'])
+    assert row['owner_user_id'] == owner_id and row['owner_name'] == '张三'
+
+    with database() as db:
+        assert db.get(Rule, c['rule_id']).owner_user_id == owner_id
+
+    # 清除对接人
+    r = client.post('/api/v1/customers/batch-owner',
+                    json={'customer_ids': [c['id']], 'owner_user_id': None})
+    assert r.status_code == 200
+    rows = client.get('/api/v1/customers').json()
+    row = next(x for x in rows if x['id'] == c['id'])
+    assert row['owner_user_id'] is None and row['owner_name'] is None
+
+    # 不存在的用户 → 422；不存在的客户 → 404
+    assert client.post('/api/v1/customers/batch-owner',
+                       json={'customer_ids': [c['id']], 'owner_user_id': 'nope'}).status_code == 422
+    assert client.post('/api/v1/customers/batch-owner',
+                       json={'customer_ids': ['missing'], 'owner_user_id': owner_id}).status_code == 404

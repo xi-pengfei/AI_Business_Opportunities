@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy import func, select
 from sqlalchemy import text as sql_text
 
-from scout.models import Customer, CustomerSignal, Document, Rule, Task
+from scout.models import Customer, CustomerSignal, Document, Rule, Task, User
 from scout.providers import ProviderError, canonical_url, clean_text
 from scout.quality import ZONE, describe
 
@@ -129,7 +129,9 @@ def customer_records(db):
     counts = dict(db.execute(select(CustomerSignal.customer_id, func.count()).where(
         *signal_window()).group_by(CustomerSignal.customer_id)).all())
     output = []
-    for customer, rule in db.execute(select(Customer, Rule).join(Rule, Rule.customer_id == Customer.id).order_by(Customer.created_at)):
+    for customer, rule, owner in db.execute(
+        select(Customer, Rule, User).join(Rule, Rule.customer_id == Customer.id)
+        .outerjoin(User, User.id == Rule.owner_user_id).order_by(Customer.created_at)):
         latest = db.scalar(select(Task).where(Task.rule_id == rule.id, Task.kind == "search").order_by(Task.created_at.desc()).limit(1))
         newest = db.scalar(select(CustomerSignal).where(CustomerSignal.customer_id == customer.id,
             *signal_window()).order_by(CustomerSignal.created_at.desc()).limit(1))
@@ -142,5 +144,7 @@ def customer_records(db):
             "last_search_at": latest.updated_at if latest else None,
             "last_found_at": newest.created_at if newest else None,
             "signal_count": counts.get(customer.id, 0),
+            "owner_user_id": rule.owner_user_id,
+            "owner_name": (owner.display_name or owner.username) if owner is not None else None,
             "next_run_at": rule.next_run_at})
     return output

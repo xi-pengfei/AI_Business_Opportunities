@@ -1722,6 +1722,21 @@ tr:hover .edit-name { opacity: 1; }
 .count-cell { display: inline-flex; align-items: baseline; gap: 3px; padding: 3px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--accent-tint); color: var(--accent); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .count-cell small { font-size: 12px; font-weight: 600; }
 .count-cell:hover { border-color: var(--accent); }
+/* 批量操作条：勾选客户后出现在表格上方 */
+.batch-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; margin: 0 0 10px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-tint); font-size: 13px; }
+.batch-bar b { color: var(--accent); }
+/* 选择列 */
+.sel-cell { text-align: center; }
+.sel-cell input, th input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+/* 指定对接人：单选列表（用按钮实现，避开抽屉内 label 的排版样式） */
+.assign-list { display: flex; flex-direction: column; gap: 8px; }
+.assign-item { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; padding: 11px 14px; margin: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+.assign-item:hover { border-color: var(--ink-3); }
+.assign-item.on { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+.assign-dot { flex: none; width: 16px; height: 16px; border: 1.5px solid var(--ink-3); border-radius: 50%; position: relative; }
+.assign-item.on .assign-dot { border-color: var(--accent); }
+.assign-item.on .assign-dot::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent); }
+.assign-item .assign-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .signal-item {
   border: 1px solid var(--line);
   border-radius: 10px;

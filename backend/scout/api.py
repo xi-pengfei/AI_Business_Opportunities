@@ -1009,6 +1009,30 @@ def update_customer(customer_id: str, body: CustomerInput, user=Depends(auth.cur
         raise HTTPException(409, "该客户名称已存在") from None
 
 
+class BatchOwnerInput(BaseModel):
+    customer_ids: list[str] = Field(min_length=1, max_length=200)
+    owner_user_id: str | None = None
+
+
+@app.post("/api/v1/customers/batch-owner", dependencies=[Depends(auth.require_admin)])
+def batch_assign_owner(body: BatchOwnerInput):
+    """批量指定/更换客户对接人：改监测 Rule 的 owner，后续按人推送以此为准。"""
+    with Session.begin() as db:
+        if body.owner_user_id:
+            owner = db.get(User, body.owner_user_id)
+            if owner is None or not owner.is_active:
+                raise HTTPException(422, "对接人不存在或已停用")
+        rows = db.scalars(select(Customer).where(Customer.id.in_(body.customer_ids))).all()
+        if len(rows) != len(set(body.customer_ids)):
+            raise HTTPException(404, "部分客户不存在，请刷新后重试")
+        for customer in rows:
+            rule = db.scalar(select(Rule).where(Rule.customer_id == customer.id).with_for_update())
+            if rule is not None:
+                rule.owner_user_id = body.owner_user_id
+        db.flush()
+        return {"updated": len(rows), "owner_user_id": body.owner_user_id}
+
+
 @app.get("/api/v1/customer-signals")
 def customer_signals(customer_id: str | None = None, offset: int = Query(0, ge=0), current=Depends(auth.screen)):
     from scout.customers import signal_window
