@@ -8,6 +8,7 @@ type Draft = { id?: string; name: string; aliases: string; urls: string };
 const empty: Draft = { name: "", aliases: "", urls: "" };
 const dateTime = (value?: number) => value ? new Date(value * 1000).toLocaleString("zh-CN", {timeZone:"Asia/Shanghai", hour12:false}) : "—";
 const PlusIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 5v14M5 12h14"/></svg>;
+const EditIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>;
 
 type Status = { cls: string; text: string; note?: string; tab: "on" | "attention" | "off" };
 function statusOf(c: Customer): Status {
@@ -172,7 +173,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
     <div className="kpis">
       <div className="kpi"><div className="kpi-l">监测客户</div><div className="kpi-v num">{customers.length}<small>家</small></div><div className="kpi-d">{enabledCount} 家监测中 · {customers.length-enabledCount} 家已停止</div></div>
       <div className="kpi"><div className="kpi-l">需要关注</div><div className="kpi-v num c-amber">{attention}<small>家</small></div><div className="kpi-d">搜索入口异常或等待首次搜索</div></div>
-      <div className="kpi"><div className="kpi-l">近 30 天动向</div><div className="kpi-v num">{signalsTotal ?? "—"}<small>条</small></div><div className="kpi-d">点击客户名称查看对应动向明细</div></div>
+      <div className="kpi"><div className="kpi-l">近 30 天动向</div><div className="kpi-v num">{signalsTotal ?? "—"}<small>条</small></div><div className="kpi-d">点击「条数」查看该客户的动向明细</div></div>
     </div>
 
     <div className="seg-tabs" role="tablist" aria-label="按监测状态筛选">
@@ -189,10 +190,11 @@ export function Customers({request, manage = false}: {request: Request; manage?:
         <table className="rule-table fit">
           <thead><tr>
             <th style={{width:'6%'}}>序号</th>
-            <th style={{width:'40%'}}>客户</th>
-            <th style={{width:'18%'}}>最近搜索</th>
-            <th style={{width:'18%'}}>最后新增</th>
-            <th style={{width:'18%'}}>操作</th>
+            <th style={{width:'38%'}}>客户</th>
+            <th style={{width:'12%'}}>近 30 天入库</th>
+            <th style={{width:'16%'}}>最近搜索</th>
+            <th style={{width:'16%'}}>最后新增</th>
+            <th style={{width:'12%'}}>操作</th>
           </tr></thead>
           <tbody>
             {pageRows.map((c,i)=>{
@@ -201,15 +203,15 @@ export function Customers({request, manage = false}: {request: Request; manage?:
                 <td className="idx-cell">{(current-1)*pageSize+i+1}</td>
                 <td>
                   <div className="cell-line">
-                    <button type="button" className="cell-link" disabled={busy} onClick={()=>openDetail(c)} title="查看该客户的动向明细">{c.name}</button>
+                    <button type="button" className="cell-link" disabled={busy} onClick={()=>edit(c)} title="修改该客户">{c.name}</button>
+                    <button type="button" className="edit-name" disabled={busy} onClick={()=>edit(c)} title="修改该客户" aria-label={`修改 ${c.name}`}><EditIcon/></button>
                     <span className={"st "+s.cls} title={s.note}>{s.text}</span>
-                    <span className="count-pill" title="近 30 天入库信息数量">{c.signal_count ?? 0} 条</span>
                   </div>
                 </td>
+                <td><button type="button" className="count-cell" disabled={busy} onClick={()=>openDetail(c)} title="查看该客户的动向记录日志">{c.signal_count ?? 0} <small>条</small></button></td>
                 <td className="muted">{dateTime(c.last_search_at)}</td>
                 <td className="muted">{dateTime(c.last_found_at)}</td>
                 <td><div className="actions">
-                  <button className="btn btn-sm" disabled={busy} onClick={()=>edit(c)}>修改</button>
                   <button className="btn btn-sm btn-quiet" disabled={busy} onClick={()=>toggle(c)}>{c.enabled?"停止监测":"开始监测"}</button>
                 </div></td>
               </tr>;
