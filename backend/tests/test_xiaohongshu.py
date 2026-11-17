@@ -179,26 +179,48 @@ def test_search_to_terminal_feed_is_deduplicated_and_pushed_once(client, databas
     assert item["business_status"] == "waiting_claim" and item["source_name"] == "小红书"
 
 
-def test_login_resume_is_admin_only_and_does_not_resume_customer_tasks(
+def test_login_resume_is_owner_or_admin_and_requeues_account_tasks(
     client, database, monkeypatch
 ):
-    r = client.post(
-        "/api/v1/rules",
-        json={"name": "social", "query": "找开发", "provider": "xiaohongshu", "enabled": True},
+    acc = client.post(
+        "/api/v1/xiaohongshu/accounts",
+        json={"name": "账号A", "url": "http://connector-a", "query": "找开发"},
     ).json()
+    aid, rid = acc["id"], acc["rule"]["id"]
+    admin_headers = dict(client.headers)
     with database.begin() as db:
-        task = service.start_rule(db, db.get(Rule, r["id"]), "auth-test")
+        task = service.start_rule(db, db.get(Rule, rid), "auth-test")
         tid = task.id
     token, *_ = service.claim(tid)
     service.finish(tid, token, error=ProviderError("xhs_login_required", True))
     monkeypatch.setattr(xiaohongshu, "login_status", lambda c: {"is_logged_in": True})
+    # 展示令牌没有用户身份，不能操作账号
     assert (
         client.post(
-            "/api/v1/xiaohongshu/login/status", headers={"Authorization": "Bearer test-display"}
+            f"/api/v1/xiaohongshu/accounts/{aid}/login/status",
+            headers={"Authorization": "Bearer test-display"},
         ).status_code
         == 403
     )
-    assert client.post("/api/v1/xiaohongshu/login/status").json()["is_logged_in"]
+    # 非建立者的普通成员只能看，不能操作
+    client.post(
+        "/api/v1/users",
+        json={"username": "mike", "password": "mike12345", "role": "member"},
+    )
+    other = client.post(
+        "/api/v1/auth/login", json={"username": "mike", "password": "mike12345"}
+    ).json()["access_token"]
+    assert (
+        client.post(
+            f"/api/v1/xiaohongshu/accounts/{aid}/login/status",
+            headers={"Authorization": f"Bearer {other}"},
+        ).status_code
+        == 403
+    )
+    # 建立者操作成功，登录恢复后该账号等待中的任务重新排队
+    assert client.post(
+        f"/api/v1/xiaohongshu/accounts/{aid}/login/status", headers=admin_headers
+    ).json()["is_logged_in"]
     with database() as db:
         assert db.get(Task, tid).status == "queued"
 

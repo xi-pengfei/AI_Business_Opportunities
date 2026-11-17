@@ -3,6 +3,7 @@ import json
 import logging
 import secrets
 import time
+from types import SimpleNamespace
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -32,6 +33,7 @@ from scout.models import (
     Task,
     User,
     UserIdentity,
+    XhsAccount,
 )
 from scout.product_rules import ProductInput, ProductSpec
 from scout.service import emit, start_rule
@@ -1059,45 +1061,193 @@ def customer_signal_detail(signal_id: str):
         return {**record(signal), "evidence": record(db.get(Document, signal.document_id))}
 
 
-@app.post("/api/v1/xiaohongshu/login/status", dependencies=[Depends(auth.require_admin)])
-def xhs_login_status():
+# ---------- 小红书多账号 ----------
+# 每个账号 = 一路独立连接器（自己的登录态 + 自己的关键词规则），可并发采集。
+# 全员可见（只读）；建立者与系统管理员可修改/操作。
+
+
+class XhsAccountInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    url: str = Field(max_length=500)
+    token: str = Field(default="", max_length=500)
+    query: str | None = Field(default=None, max_length=500)
+    enabled: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value):
+        if not value.strip():
+            raise ValueError("账号名称不能为空")
+        return value.strip()
+
+    @field_validator("url")
+    @classmethod
+    def clean_url(cls, value):
+        value = value.strip().rstrip("/")
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("服务地址须以 http:// 或 https:// 开头")
+        return value
+
+
+def xhs_account_record(db, account, rule, owner, collector):
+    return {
+        "id": account.id, "name": account.name, "url": account.url,
+        "token": masked(account.token), "owner_user_id": account.owner_user_id,
+        "owner_name": (owner.display_name or owner.username) if owner is not None else None,
+        "enabled": account.enabled, "created_at": account.created_at,
+        "rule": {"id": rule.id if rule else None, "query": rule.query if rule else "",
+                 "enabled": rule.enabled if rule else False,
+                 "state": collector.get("state") if collector else "queued",
+                 "error_code": collector.get("error_code") if collector else None,
+                 "next_run_at": rule.next_run_at if rule else 0},
+        "runs_total": db.scalar(select(func.count()).select_from(Task).where(
+            Task.rule_id == rule.id, Task.kind == "search")) if rule else 0,
+    }
+
+
+def get_xhs_rule(db, account):
+    return db.scalar(select(Rule).where(Rule.xhs_account_id == account.id).order_by(Rule.created_at))
+
+
+@app.get("/api/v1/xiaohongshu", dependencies=[Depends(auth.current_user)])
+def xhs_overview():
+    with Session() as db:
+        accounts = db.scalars(select(XhsAccount).order_by(XhsAccount.created_at)).all()
+        owner_ids = {a.owner_user_id for a in accounts if a.owner_user_id}
+        owners = {u.id: u for u in db.scalars(select(User).where(User.id.in_(owner_ids or {""})))} if owner_ids else {}
+        rules = {r.xhs_account_id: r for r in db.scalars(select(Rule).where(Rule.provider == "xiaohongshu"))}
+        ids = {r.id for r in rules.values()}
+        collectors = {c["id"]: c for c in collector_status(db, False, "admin") if c["id"] in ids}
+        return {"accounts": [
+            xhs_account_record(db, a, rules.get(a.id), owners.get(a.owner_user_id), collectors.get(rules.get(a.id).id) if rules.get(a.id) else None)
+            for a in accounts]}
+
+
+@app.post("/api/v1/xiaohongshu/accounts", status_code=201, dependencies=[Depends(auth.current_user)])
+def xhs_create_account(body: XhsAccountInput, user=Depends(auth.current_user)):
+    with Session.begin() as db:
+        exists = db.scalar(select(XhsAccount).where(XhsAccount.name == body.name))
+        if exists:
+            raise HTTPException(409, "已有同名账号，请换一个名称")
+        account = XhsAccount(name=body.name, url=body.url, token=body.token,
+                          owner_user_id=user.id, enabled=True, created_at=time.time())
+        db.add(account)
+        db.flush()
+        rule = Rule(name=body.name, query=(body.query or "软件需求\n信息化需求"),
+                    provider="xiaohongshu", source_type="social_demand",
+                    xhs_account_id=account.id, owner_user_id=user.id,
+                    enabled=body.enabled is not False, interval_seconds=0, max_results=20)
+        db.add(rule)
+        db.flush()
+        return {**xhs_account_record(db, account, rule, user, None)}
+
+
+def xhs_own_or_admin(account: XhsAccount, user: User) -> None:
+    if user.role == "admin" or account.owner_user_id == user.id:
+        return
+    raise HTTPException(403, "只能操作自己建立的小红书账号；如需调整他人账号请联系管理员")
+
+
+@app.patch("/api/v1/xiaohongshu/accounts/{account_id}", dependencies=[Depends(auth.current_user)])
+def xhs_update_account(account_id: str, body: XhsAccountInput, user=Depends(auth.current_user)):
+    with Session.begin() as db:
+        account = db.get(XhsAccount, account_id)
+        if account is None:
+            raise HTTPException(404, "小红书账号不存在")
+        xhs_own_or_admin(account, user)
+        dup = db.scalar(select(XhsAccount).where(XhsAccount.name == body.name, XhsAccount.id != account_id))
+        if dup:
+            raise HTTPException(409, "已有同名账号，请换一个名称")
+        account.name, account.url = body.name, body.url
+        if body.token:
+            account.token = body.token
+        if body.enabled is not None:
+            account.enabled = body.enabled
+        rule = get_xhs_rule(db, account)
+        if rule is not None:
+            if body.query:
+                rule.query = body.query
+                rule.version += 1
+            if body.enabled is not None:
+                rule.enabled = body.enabled
+            rule.next_run_at = time.time()
+        db.flush()
+        rule = get_xhs_rule(db, account)
+        return xhs_account_record(db, account, rule, db.get(User, account.owner_user_id) if account.owner_user_id else None, None)
+
+
+def xhs_requeue_account(account_id: str | None):
+    """登录恢复后，重新排队该账号因登录/风控等待的任务，并让规则立即复查。"""
+    with Session.begin() as db:
+        for rule in db.scalars(select(Rule).where(Rule.provider == "xiaohongshu",
+                func.coalesce(Rule.xhs_account_id, "") == (account_id or ""))):
+            if rule.enabled:
+                rule.next_run_at = time.time()
+        for task in db.scalars(select(Task).where(
+                Task.payload["provider"].as_string() == "xiaohongshu",
+                func.coalesce(Task.payload["xhs_account_id"].as_string(), "") == (account_id or ""),
+                Task.status == "action_required",
+                Task.error_code.in_(("xhs_login_required", "xhs_verification_required"))).with_for_update()):
+            task.status, task.error_code = "queued", None
+            task.available_at = time.time()
+            task.attempt_limit = task.attempts + settings().max_attempts
+            db.get(Outbox, task.id).next_publish_at = time.time()
+            emit(db, task, "task.queued", session_restored=True)
+
+
+@app.post("/api/v1/xiaohongshu/accounts/{account_id}/login/status", dependencies=[Depends(auth.current_user)])
+def xhs_account_login_status(account_id: str, user=Depends(auth.current_user)):
     from scout.providers import ProviderError
     from scout.xiaohongshu import login_status
+    with Session() as db:
+        account = db.get(XhsAccount, account_id)
+        if account is None:
+            raise HTTPException(404, "小红书账号不存在")
+        xhs_own_or_admin(account, user)
+        config = SimpleNamespace(xiaohongshu_url=account.url, xiaohongshu_token=account.token)
     try:
-        result = login_status(settings())
+        result = login_status(config)
     except ProviderError as exc:
         raise HTTPException(503, exc.code) from None
     if result["is_logged_in"]:
-        with Session.begin() as db:
-            for rule in db.scalars(select(Rule).where(Rule.provider == "xiaohongshu", Rule.enabled.is_(True))):
-                rule.next_run_at = time.time()
-            for task in db.scalars(select(Task).where(Task.payload["provider"].as_string() == "xiaohongshu",
-                    Task.status == "action_required", Task.error_code.in_(("xhs_login_required", "xhs_verification_required"))).with_for_update()):
-                task.status, task.error_code = "queued", None
-                task.available_at = time.time()
-                task.attempt_limit = task.attempts + settings().max_attempts
-                db.get(Outbox, task.id).next_publish_at = time.time()
-                emit(db, task, "task.queued", session_restored=True)
+        xhs_requeue_account(account_id)
     return result
 
 
-@app.post("/api/v1/xiaohongshu/login/qrcode", dependencies=[Depends(auth.require_admin)])
-def xhs_login_qrcode():
+@app.post("/api/v1/xiaohongshu/accounts/{account_id}/login/qrcode", dependencies=[Depends(auth.current_user)])
+def xhs_account_login_qrcode(account_id: str, user=Depends(auth.current_user)):
     from scout.providers import ProviderError
     from scout.xiaohongshu import login_qrcode
+    with Session() as db:
+        account = db.get(XhsAccount, account_id)
+        if account is None:
+            raise HTTPException(404, "小红书账号不存在")
+        xhs_own_or_admin(account, user)
+        config = SimpleNamespace(xiaohongshu_url=account.url, xiaohongshu_token=account.token)
     try:
-        return login_qrcode(settings())
+        return login_qrcode(config)
     except ProviderError as exc:
         raise HTTPException(503, exc.code) from None
 
 
-@app.get("/api/v1/xiaohongshu", dependencies=[Depends(auth.require_admin)])
-def xhs_overview():
+@app.get("/api/v1/xiaohongshu/accounts/{account_id}/runs", dependencies=[Depends(auth.current_user)])
+def xhs_account_runs(account_id: str):
+    """某账号的爬取批次明细（点数字链接打开）。"""
     with Session() as db:
-        rows = db.scalars(select(Rule).where(Rule.provider == "xiaohongshu").order_by(Rule.created_at)).all()
-        ids = {r.id for r in rows}
-        return {"rules": [record(r) for r in rows],
-                "collectors": [c for c in collector_status(db, False, "admin") if c["id"] in ids]}
+        account = db.get(XhsAccount, account_id)
+        if account is None:
+            raise HTTPException(404, "小红书账号不存在")
+        rule = get_xhs_rule(db, account)
+        if rule is None:
+            return {"account": account.name, "total": 0, "items": []}
+        total = db.scalar(select(func.count()).select_from(Task).where(Task.rule_id == rule.id, Task.kind == "search"))
+        rows = db.scalars(select(Task).where(Task.rule_id == rule.id, Task.kind == "search")
+                          .order_by(Task.created_at.desc()).limit(50)).all()
+        return {"account": account.name, "total": total, "items": [
+            {"id": t.id, "query": t.payload.get("query", ""), "status": t.status,
+             "attempts": t.attempts, "error_code": t.error_code,
+             "discovered": t.result.get("discovered", 0) if isinstance(t.result, dict) else 0,
+             "created_at": t.created_at, "updated_at": t.updated_at} for t in rows]}
 
 
 @app.get("/api/v1/dingtalk/groups", dependencies=[Depends(auth.require_admin)])

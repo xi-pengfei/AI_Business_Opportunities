@@ -71,7 +71,7 @@ services:
     command: ["celery", "-A", "scout.worker:app", "worker", "-Q", "customers", "--concurrency=1", "--loglevel=WARNING"]
   social-worker:
     <<: *backend
-    command: ["celery", "-A", "scout.worker:app", "worker", "-Q", "social", "--concurrency=1", "--loglevel=WARNING"]
+    command: ["celery", "-A", "scout.worker:app", "worker", "-Q", "social", "--concurrency=3", "--loglevel=WARNING"]
   ai-reviewer:
     <<: *backend
     command: ["python", "-m", "scout.ai_review"]

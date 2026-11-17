@@ -784,7 +784,7 @@ function App() {
                 </p>
               )}
               {!data && <div className="empty">正在读取运行状态…</div>}
-              {page === "xiaohongshu" && <Xiaohongshu request={request} />}
+              {page === "xiaohongshu" && <Xiaohongshu request={request} me={me} />}
               {page === "customers" && <Customers request={request} manage />}
               {page === "rules" && <NetworkRules rules={rules} request={request} onSaved={refresh} liveTasks={liveTasks} me={me} />}
               {page === "users" && me?.role === "admin" && <Users request={request} me={me} />}

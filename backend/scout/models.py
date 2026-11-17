@@ -29,6 +29,7 @@ class Rule(Base):
     source_type: Mapped[str] = mapped_column(String(30), default="public_tender", server_default="public_tender")
     customer_id: Mapped[str | None] = mapped_column(ForeignKey("customers.id"), unique=True)
     owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    xhs_account_id: Mapped[str | None] = mapped_column(ForeignKey("xhs_accounts.id"), nullable=True)
     query: Mapped[str] = mapped_column(Text)
     search_spec: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     provider: Mapped[str] = mapped_column(String(30), default="tavily")
@@ -39,6 +40,18 @@ class Rule(Base):
     next_run_at: Mapped[float] = mapped_column(Float, default=time.time, index=True)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
     started_at: Mapped[float | None] = mapped_column(Float)
+
+
+class XhsAccount(Base):
+    """一个独立的小红书连接器实例：自己的登录态 + 自己的关键词规则。"""
+    __tablename__ = "xhs_accounts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(120))
+    url: Mapped[str] = mapped_column(String(500))
+    token: Mapped[str] = mapped_column(String(500), default="")
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
 
 
 class Task(Base):

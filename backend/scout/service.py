@@ -70,6 +70,7 @@ def start_rule(db, rule, key, scheduled=False):
             "source_type": rule.source_type or "public_tender",
             **({"customer_id": rule.customer_id} if rule.customer_id else {}),
             **({"customer_snapshot": customer_snapshot} if customer_snapshot else {}),
+            **({"xhs_account_id": rule.xhs_account_id} if rule.xhs_account_id else {}),
             "max_results": rule.max_results,
             "page": lane.page if lane else 1,
             **({"engine":lane.engine,"search_cursor_id":lane.id} if lane else {}),
@@ -233,7 +234,7 @@ def finish(task_id, token, results=None, error=None, prepared=None):
                         enqueue(
                             db,
                             kind="ingest",
-                            payload={**result, "provider": task.payload["provider"], "source_type": task.payload.get("source_type","public_tender"), **({"customer_id": task.payload["customer_id"], "customer_snapshot": task.payload.get("customer_snapshot")} if task.payload.get("customer_id") else {})},
+                            payload={**result, "provider": task.payload["provider"], "source_type": task.payload.get("source_type","public_tender"), **({"customer_id": task.payload["customer_id"], "customer_snapshot": task.payload.get("customer_snapshot")} if task.payload.get("customer_id") else {}), **({"xhs_account_id": task.payload["xhs_account_id"]} if task.payload.get("xhs_account_id") else {})},
                             key=f"child:{task.id}:{i}",
                             parent=task,
                         )
@@ -253,8 +254,10 @@ def finish(task_id, token, results=None, error=None, prepared=None):
             if task.payload.get("provider") == "xiaohongshu" and error.code == "empty_content":
                 task.attempt_limit = task.attempts  # Textless notes cannot improve through retries.
             if task.payload.get("provider") == "xiaohongshu" and error.code != "empty_content":
+                # 登录/风控只冷却同账号的规则；无账号的遗留规则按全局配置处理。
                 for rule in db.scalars(select(Rule).where(Rule.provider == "xiaohongshu")):
-                    rule.next_run_at = max(rule.next_run_at, time.time() + 600)
+                    if rule.xhs_account_id == task.payload.get("xhs_account_id"):
+                        rule.next_run_at = max(rule.next_run_at, time.time() + 600)
             task.status = (
                 "action_required"
                 if error.action_required
@@ -275,6 +278,21 @@ def finish(task_id, token, results=None, error=None, prepared=None):
         emit(db, task, f"task.{task.status}", error_code=task.error_code)
 
 
+def xhs_config(payload):
+    """按任务载荷取该账号的连接器配置；无账号的遗留任务回落到全局 .env 配置。"""
+    from types import SimpleNamespace
+    account_id = payload.get("xhs_account_id")
+    if not account_id:
+        return settings()
+    from scout.models import XhsAccount
+    with Session() as db:
+        account = db.get(XhsAccount, account_id)
+    if account is None or not account.enabled:
+        raise ProviderError("xhs_not_configured", True)
+    base = settings()
+    return SimpleNamespace(**{**base.model_dump(), "xiaohongshu_url": account.url, "xiaohongshu_token": account.token})
+
+
 def execute(task_id):
     claimed = claim(task_id)
     if not claimed:
@@ -285,15 +303,17 @@ def execute(task_id):
             with Session() as db:
                 blocked = db.scalar(select(Task.error_code).where(
                     Task.payload["provider"].as_string() == "xiaohongshu",
+                    func.coalesce(Task.payload["xhs_account_id"].as_string(), "") == (payload.get("xhs_account_id") or ""),
                     Task.status == "action_required",
                     Task.error_code.in_(("xhs_login_required", "xhs_verification_required"))).limit(1))
             if blocked:
                 raise ProviderError(blocked, True)
-        results = search(payload, settings()) if kind == "search" else None
+        config = xhs_config(payload) if payload.get("provider") == "xiaohongshu" else settings()
+        results = search(payload, config) if kind == "search" else None
         prepared = None
         if kind == "ingest" and payload.get("provider") == "xiaohongshu" and payload.get("note_token"):
             from scout.xiaohongshu import read_note
-            prepared = read_note(payload, settings())
+            prepared = read_note(payload, config)
         finish(task_id, token, results=results, prepared=prepared)
     except ProviderError as exc:
         finish(task_id, token, error=exc)
