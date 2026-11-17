@@ -1696,6 +1696,9 @@ button.console-side-foot:hover {
 .seg-tabs .seg-new { flex: none; margin-left: auto; }
 .seg-tabs .seg-new + .search-box { margin-left: 0; }
 .seg-tabs .seg-new svg { width: 14px; height: 14px; }
+/* 信息库状态筛选：下拉与 seg-tabs 同行对齐 */
+.seg-tabs .seg-filter { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 13px; color: var(--ink-soft); }
+.seg-tabs .seg-filter select { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--surface); color: var(--ink); }
 .search-box input {
   border: 1px solid var(--line);
   border-radius: 8px;

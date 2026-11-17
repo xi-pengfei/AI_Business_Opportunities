@@ -7,6 +7,9 @@ const empty:Draft={name:'',synonyms:'',actions:'采购公告\n招标公告\n采�
 
 const PlusIcon=()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 5v14M5 12h14"/></svg>;
 
+type Tab='all'|'on'|'off';
+const TABS:{key:Tab;label:string}[]=[{key:'all',label:'全部'},{key:'on',label:'运行中'},{key:'off',label:'已停止'}];
+
 const stamp=(t?:number)=>t?new Date(t*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'—';
 function span(seconds:number){
   if(seconds<3600)return `${Math.max(1,Math.round(seconds/60))} 分钟`;
@@ -22,12 +25,22 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:
   const [stats,setStats]=useState<Record<string,Stats>>({});
   const [page,setPage]=useState(1);
   const [pageSize,setPageSize]=useState(10);
+  // 顶部状态菜单 + 模糊搜索
+  const [tab,setTab]=useState<Tab>('all');
+  const [query,setQuery]=useState('');
   const form=useRef<HTMLFormElement>(null);
   const heading=useRef<HTMLHeadingElement>(null);
   const card=useRef<HTMLDivElement>(null);
   const rows=rules.filter(r=>r.provider!=='demo'&&r.provider!=='xiaohongshu'&&!r.search_spec?.retired);
+  const name=(r:Rule)=>r.search_spec?.product||r.name;
   const running=rows.filter(r=>r.enabled).length;
   const collected=rows.reduce((sum,r)=>sum+(stats[r.id]?.items||0),0);
+  const q=query.trim().toLowerCase();
+  const filtered=rows.filter(r=>{
+    if(tab!=='all'&&r.enabled!==(tab==='on'))return false;
+    if(q&&!name(r).toLowerCase().includes(q))return false;
+    return true;
+  });
   useEffect(()=>{
     let alive=true;
     request('/network-rules/stats').then((list:Stats[])=>{
@@ -49,9 +62,9 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:
     if(card.current)observer.observe(card.current);
     return()=>{removeEventListener('resize',calc);observer.disconnect();};
   },[]);
-  const pages=Math.max(1,Math.ceil(rows.length/pageSize));
+  const pages=Math.max(1,Math.ceil(filtered.length/pageSize));
   const current=Math.min(page,pages);
-  const pageRows=rows.slice((current-1)*pageSize,current*pageSize);
+  const pageRows=filtered.slice((current-1)*pageSize,current*pageSize);
   function focus(){requestAnimationFrame(()=>{heading.current?.focus();});}
   function fromRule(r:Rule):Draft{return {id:r.id,name:r.search_spec?.product||r.name,synonyms:(r.search_spec?.synonyms||[]).join("\n"),actions:(r.search_spec?.actions||["采购公告","招标公告","采购意向"]).join("\n"),regions:(r.search_spec?.regions||[]).join(" "),enabled:r.enabled};}
   function newRule(){setDraft(empty);setError('');setMessage('');setOpen(true);focus();}
@@ -62,7 +75,7 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:
     const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!busy)cancel();};
     addEventListener('keydown',onKey);
     return()=>removeEventListener('keydown',onKey);
-  });
+  },[open,busy]);
   function change(next:Draft){setDraft(next);setError('');}
   async function save(){
     if(!form.current?.reportValidity())return;
@@ -84,18 +97,24 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:
     <div className="page-head">
       <div>
         <h1 className="page-title">网络商机</h1>
-        <p className="page-sub">按「产品／业务名词」定义采集主题：填写名称、行为词与地区，保存后从公开网络持续捕获商机信号。</p>
-      </div>
-      <div className="page-actions">
-        <button type="button" className="btn btn-primary" onClick={newRule}><PlusIcon/>新建网络商机</button>
+        <p className="page-sub">填好产品名和采购词，系统自动从公开网站找商机，每天更新。</p>
       </div>
     </div>
 
     <div className="kpis">
-      <div className="kpi"><div className="kpi-l">业务名称</div><div className="kpi-v num">{rows.length}<small>个</small></div><div className="kpi-d">累计创建的采集主题</div></div>
-      <div className="kpi"><div className="kpi-l">信息采集</div><div className="kpi-v num c-blue">{collected}<small>条</small></div><div className="kpi-d">累计有效条数</div></div>
-      <div className="kpi"><div className="kpi-l">运行中</div><div className="kpi-v num c-green">{running}<small>个</small></div><div className="kpi-d">{liveTasks>0?`正在执行任务 ${liveTasks} 个`:'等待执行新任务'}</div></div>
-      <div className="kpi"><div className="kpi-l">已停止</div><div className="kpi-v num c-amber">{rows.length-running}<small>个</small></div><div className="kpi-d">停止后不再自动采集</div></div>
+      <div className="kpi"><div className="kpi-l">采集主题</div><div className="kpi-v num">{rows.length}<small>个</small></div><div className="kpi-d">{running} 个运行中 · {rows.length-running} 个已停止</div></div>
+      <div className="kpi"><div className="kpi-l">累计采集</div><div className="kpi-v num c-blue">{collected}<small>条</small></div><div className="kpi-d">全部主题入库的有效信息</div></div>
+      <div className="kpi"><div className="kpi-l">正在执行</div><div className="kpi-v num c-green">{liveTasks}<small>个</small></div><div className="kpi-d">{liveTasks>0?'采集任务正在运行':'当前没有执行中的任务'}</div></div>
+    </div>
+
+    <div className="seg-tabs" role="tablist" aria-label="按运行状态筛选">
+      {TABS.map(t=><button key={t.key} type="button" role="tab" aria-selected={tab===t.key} className={tab===t.key?'active':''} onClick={()=>{setTab(t.key);setPage(1);}}>
+        {t.label}<span className="n">{t.key==='all'?rows.length:t.key==='on'?running:rows.length-running}</span>
+      </button>)}
+      <button type="button" className="btn btn-primary btn-sm seg-new" onClick={newRule}><PlusIcon/>新建主题</button>
+      <div className="search-box">
+        <input type="search" aria-label="搜索主题" placeholder="搜索业务名称…" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}}/>
+      </div>
     </div>
 
     <div className="table-card" ref={card}>
@@ -103,20 +122,17 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:
         <table className="rule-table fit">
           <thead>
             <tr>
-              <th style={{width:'5%'}}>序号</th>
-              <th style={{width:'18%'}}>业务名称</th>
-              <th style={{width:'15%'}}>同义词</th>
-              <th style={{width:'7%'}}>地区</th>
-              <th style={{width:'11%'}}>状态</th>
-              <th style={{width:'10%'}}>创建时间</th>
-              <th style={{width:'9%'}}>已运行</th>
-              <th style={{width:'8%'}}>采集条数</th>
-              <th style={{width:'6%'}}>成功率</th>
-              <th style={{width:'11%'}}>操作</th>
+              <th style={{width:'30%'}}>业务名称</th>
+              <th style={{width:'14%'}}>同义词</th>
+              <th style={{width:'12%'}}>地区</th>
+              <th style={{width:'14%'}}>已运行</th>
+              <th style={{width:'10%'}}>采集条数</th>
+              <th style={{width:'8%'}}>成功率</th>
+              <th style={{width:'12%'}}>操作</th>
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((r,i)=>{
+            {pageRows.map((r)=>{
               const syn=r.search_spec?.synonyms||[];
               const region=(r.search_spec?.regions||[]).join('、')||'全国';
               const s=stats[r.id];
@@ -124,13 +140,15 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:
               const startedAt=s?.started_at||s?.created_at||null;
               const uptime=r.enabled&&startedAt?Date.now()/1000-startedAt:null;
               return <tr key={r.id}>
-                <td className="idx-cell">{(current-1)*pageSize+i+1}</td>
-                <td><button type="button" className="cell-link" disabled={busy||!canManage(r)} onClick={()=>edit(r)} title={canManage(r)?'打开并修改这个业务名称':'他人创建的词条，仅可查看'}>{r.search_spec?.product||r.name}</button></td>
+                <td>
+                  <div className="cell-line">
+                    <button type="button" className="cell-link" disabled={busy||!canManage(r)} onClick={()=>edit(r)} title={canManage(r)?'打开并修改这个业务名称':'他人创建的词条，仅可查看'}>{name(r)}</button>
+                    <span className={'st '+(r.enabled?'st-on':'st-off')}>{r.enabled?'运行中':'已停止'}</span>
+                  </div>
+                </td>
                 <td title={syn.length?syn.join('、'):'暂无同义词'}><div className="chip-row">{syn.length>0&&<span className="chip">{syn[0]}</span>}{syn.length>1&&<span className="chip">+{syn.length-1}</span>}{!syn.length&&<span className="muted">无</span>}</div></td>
                 <td title={region}>{region}</td>
-                <td><span className={'st '+(r.enabled?'st-on':'st-off')}>{r.enabled?'运行中':'已停止'}</span></td>
-                <td className="muted" title={s?.created_at?new Date(s.created_at*1000).toLocaleString('zh-CN',{hour12:false}):''}>{stamp(s?.created_at)}</td>
-                <td className="muted" title={uptime!=null?`已运行 ${span(uptime)}`:'尚未开始采集'}>{uptime!=null?span(uptime):'—'}</td>
+                <td className="muted" title={s?.created_at?`创建于 ${new Date(s.created_at*1000).toLocaleString('zh-CN',{hour12:false})}`:''}>{uptime!=null?span(uptime):stamp(s?.created_at)}</td>
                 <td className="num-cell" title={s?`有效 ${s.items} / 采集 ${s.items_total} 条`:'暂无采集'}>
                   {s?s.items:'—'}
                 </td>
@@ -138,23 +156,23 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:
                 <td><div className="actions">
                   {canManage(r)
                     ? (r.enabled
-                        ? <button className="btn btn-sm btn-stop" disabled={busy} onClick={()=>toggle(r)}>停止</button>
-                        : <button className="btn btn-sm btn-start" disabled={busy} onClick={()=>toggle(r)}>开始采集</button>)
-                    : <span className="muted" title="他人创建的词条，仅可查看">—</span>}
+                        ? <button className="btn btn-sm btn-quiet" disabled={busy} onClick={()=>toggle(r)}>停止</button>
+                        : <button className="btn btn-sm btn-quiet" disabled={busy} onClick={()=>toggle(r)}>开始采集</button>)
+                    : <span className="muted" title="他人创建的词条，仅可查看">只读</span>}
                 </div></td>
               </tr>;
             })}
           </tbody>
         </table>
       </div>
-      {rows.length>0&&<div className="table-foot">
-        <span>共 {rows.length} 条 · 第 {current} / {pages} 页 · 每页 {pageSize} 条</span>
+      {filtered.length>0&&<div className="table-foot">
+        <span>共 {filtered.length} 条 · 第 {current} / {pages} 页 · 每页 {pageSize} 条{q?` · 已搜索“${query}”`:''}{tab!=='all'?` · ${TABS.find(t=>t.key===tab)!.label}`:''}</span>
         <div className="chart-pager">
           <button className="btn btn-sm" disabled={current<=1} onClick={()=>setPage(current-1)}>上一页</button>
           <button className="btn btn-sm" disabled={current>=pages} onClick={()=>setPage(current+1)}>下一页</button>
         </div>
       </div>}
-      {!rows.length&&<div className="empty">还没有业务名称。点击右上角「新建网络商机」，填写业务名称与行为词即可保存并开始采集。</div>}
+      {!filtered.length&&<div className="empty">{rows.length&&(q||tab!=='all')?'没有符合条件的主题，试试调整搜索词或状态筛选。':'还没有采集主题，点「新建主题」填好产品名和采购词即可开始。'}</div>}
     </div>
 
     {open&&<div className="drawer-layer">
@@ -175,9 +193,9 @@ export function NetworkRules({rules,request,onSaved,liveTasks=0,me=null}:{rules:
             <label htmlFor="network-actions">行为词 <span className="opt">必填，决定「什么信号算商机」</span></label>
             <textarea id="network-actions" name="actions" rows={3} required maxLength={1600} value={draft.actions} disabled={busy} onChange={e=>change({...draft,actions:e.target.value})}/>
             <label htmlFor="network-regions">地区 <span className="opt">选填，留空为全国</span></label>
-            <textarea id="network-regions" name="regions" rows={2} maxLength={2050} value={draft.regions} disabled={busy} aria-describedby="network-regions-help" onChange={e=>change({...draft,regions:e.target.value})} placeholder="陕西 西安 安康 汉中 河南 新疆"/>
-            <p id="network-regions-help" className="hint">留空为全国，不加地区词。多个地区用空格、逗号或换行分隔，每次只组合一个地区。</p>
-            <p className="hint">搜索服务：SearXNG 开源搜索。按「名称／同义词 × 行为词 × 地区」组合检索，同义词越多覆盖越广。</p>
+            <textarea id="network-regions" name="regions" rows={2} maxLength={2050} value={draft.regions} disabled={busy} onChange={e=>change({...draft,regions:e.target.value})} placeholder="陕西 西安 安康 汉中 河南 新疆"/>
+            <p className="hint">多个地区用空格或换行分隔，每次只搜一个地区；留空则全国。</p>
+            <p className="hint">系统按「名称／同义词 × 行为词 × 地区」组合搜索公开网页。</p>
           </form>
         </div>
         <div className="dr-foot">

@@ -7,7 +7,8 @@ import type { ChartSelection } from "./Charts";
 import { RegionMap } from "./RegionMap";
 import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
-import {SourceFeed} from "./SourceFeed";
+import { SourceFeed} from "./SourceFeed";
+import { Tasks } from "./Tasks";
 import {Information} from "./FlowPanels";
 import { Xiaohongshu } from "./Xiaohongshu";
 import { BusinessFollowup } from "./FollowupPanels";
@@ -799,82 +800,44 @@ function App() {
               {page === "rules" && <NetworkRules rules={rules} request={request} onSaved={refresh} liveTasks={liveTasks} me={me} />}
               {page === "users" && me?.role === "admin" && <Users request={request} me={me} />}
               {page === "tasks" && (
-                <section className="panel">
-                  <h2>
-                    任务运行 <small>最近 50 条</small>
-                  </h2>
-                  <div className="table-scroll">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>任务</th>
-                          <th>阶段</th>
-                          <th>状态</th>
-                          <th>尝试</th>
-                          <th>原因</th>
-                          <th>操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {tasks.map((t) => (
-                          <tr key={t.id}>
-                            <td>
-                              <code>{t.id.slice(0, 8)}</code>
-                              <small>{clock(t.created_at)}</small>
-                            </td>
-                            <td>{t.kind === "search" ? "发现来源" : "清洗入库"}</td>
-                            <td><span className={"st st-" + t.status}>{status[t.status]}</span></td>
-                            <td>{t.attempts}</td>
-                            <td>
-                              {t.error_code
-                                ? errors[t.error_code] || t.error_code
-                                : "—"}
-                            </td>
-                            <td>
-                              {["failed", "action_required"].includes(t.status) && (
-                                <button
-                                  disabled={busy}
-                                  onClick={() =>
-                                    action(
-                                      () =>
-                                        request(`/tasks/${t.id}/retry`, {
-                                          method: "POST",
-                                        }),
-                                      "已重新入队。",
-                                    )
-                                  }
-                                >
-                                  重试
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {!tasks.length && <p className="empty">尚无任务。</p>}
-                </section>
+                <Tasks
+                  tasks={tasks}
+                  busy={busy}
+                  onRetry={(t) =>
+                    action(
+                      () => request(`/tasks/${t.id}/retry`, { method: "POST" }),
+                      "已重新入队。",
+                    )
+                  }
+                />
               )}
               {page === "information" && (
-                <section className="panel library">
-                  <h2>
-                    信息库 <small>最近 50 条 · 原文待人工核实</small>
-                  </h2>
-                  <label>信息状态 <select value={informationStatus} onChange={e=>{setItems([]);setInformationStatus(e.target.value);}}>
-                    <option value="active">有效信息</option><option value="review_pending">待 AI 审核</option>
-                    <option value="review_required">待核实 / 审核异常</option><option value="archived">已过滤 / 已归档</option><option value="merged">重复信息（已合并）</option>
-                  </select></label>
-                  <p className="scroll-hint">表格可横向滚动，右侧可查看推送与认领记录</p>
-                  <Information
-                    items={items}
-                    open={(item) =>
-                      request(`/items/${item.id}`)
-                        .then(setDetail)
-                        .catch((e) => setError(e.message))
-                    }
-                  />
-                </section>
+                <>
+                  <div className="page-head">
+                    <div>
+                      <h1 className="page-title">信息库</h1>
+                      <p className="page-sub">采集入库的全部信息，AI 已自动过滤广告和过期内容。点标题查看原文。</p>
+                    </div>
+                  </div>
+                  <div className="seg-tabs">
+                    <label className="seg-filter">信息状态{" "}
+                      <select value={informationStatus} onChange={e=>{setItems([]);setInformationStatus(e.target.value);}}>
+                        <option value="active">有效信息</option><option value="review_pending">待 AI 审核</option>
+                        <option value="review_required">待核实 / 审核异常</option><option value="archived">已过滤 / 已归档</option><option value="merged">重复信息（已合并）</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="table-card">
+                    <Information
+                      items={items}
+                      open={(item) =>
+                        request(`/items/${item.id}`)
+                          .then(setDetail)
+                          .catch((e) => setError(e.message))
+                      }
+                    />
+                  </div>
+                </>
               )}
               {detail && (
                 <section className="panel detail" aria-label="信息证据详情">

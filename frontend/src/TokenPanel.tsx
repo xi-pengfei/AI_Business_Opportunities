@@ -107,7 +107,7 @@ export function TokenPanel({open,request,user,onClose}:{open:boolean;request:(pa
           </section>
           <section className="token-section">
             <h3>API 密钥 <span className="opt">脚本接入用</span></h3>
-            <p className="hint">给 curl、CI 等脚本用的个人密钥，替代旧的全局管理令牌。明文只显示一次。</p>
+            <p className="hint">给脚本（如 curl、CI）用的个人密钥。明文只显示一次，请妥善保存。</p>
             <div className="token-row">
               <input className="token-input" placeholder="用途备注，如 CI 发布脚本" value={keyName} onChange={e=>setKeyName(e.target.value)}/>
               <button type="button" className="btn btn-sm" disabled={busy} onClick={addKey}>生成密钥</button>
@@ -153,7 +153,7 @@ export function TokenPanel({open,request,user,onClose}:{open:boolean;request:(pa
                       </div>
                     : <button type="button" className="btn" disabled={busy} onClick={()=>setConfirming(true)}>重新生成令牌</button>}
                 </>
-              : <p className="hint">未配置展示令牌（.env 的 DISPLAY_TOKEN 为空），大屏功能暂不可用。</p>}
+              : <p className="hint">尚未配置大屏令牌，大屏免登录暂不可用，请联系管理员。</p>}
           </section>}
         </div>
         <div className="dr-foot">
