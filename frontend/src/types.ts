@@ -25,6 +25,7 @@ export type Item = {
   region?: string;
   region_evidence?: string;
   published_at?: string;
+  owner_name?: string;
 };
 export type Execution = {
   id: number;

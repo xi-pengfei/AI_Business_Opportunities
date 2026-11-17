@@ -16,7 +16,7 @@ from scout.config import settings
 from scout.db import Session
 from scout.display import chart_facts, collector_status, discovery_facts, public_tasks, unique_items
 from scout.flow_metrics import flow_facts
-from scout.information import item_record
+from scout.information import item_record, owner_names
 from scout.models import (
     ApiKey,
     Attempt,
@@ -738,16 +738,15 @@ def items(demo: bool = False, limit: int = Query(50, ge=1, le=100), offset: int 
           status: Literal["active", "archived", "review_pending", "review_required", "merged"] = "active"):
 
     with Session() as db:
-        return [
-            item_record(db, i)
-            for i in db.scalars(
-                (unique_items(demo) if status == "active" else
-                 select(Item).where(Item.is_demo == demo, Item.quality_status == status))
-                .order_by(Item.created_at.desc(), Item.id)
-                .offset(offset)
-                .limit(limit)
-            )
-        ]
+        rows = db.scalars(
+            (unique_items(demo) if status == "active" else
+             select(Item).where(Item.is_demo == demo, Item.quality_status == status))
+            .order_by(Item.created_at.desc(), Item.id)
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        owners = owner_names(db, [i.id for i in rows])
+        return [item_record(db, i, owners=owners) for i in rows]
 
 
 @app.post("/api/v1/items/{item_id}/review", dependencies=[Depends(auth.require_admin)])
@@ -791,9 +790,10 @@ def display_items(
                 Document.provider == provider
             )
         total = db.scalar(select(func.count()).select_from(query.subquery()))
-        rows = db.scalars(query.order_by(Item.created_at.desc(), Item.id).offset(offset).limit(50))
+        rows = db.scalars(query.order_by(Item.created_at.desc(), Item.id).offset(offset).limit(50)).all()
+        owners = owner_names(db, [i.id for i in rows])
         # 展示令牌与管理台看到同一份数据：不再做条目脱敏。
-        return {"total": total, "items": [item_record(db, i) for i in rows]}
+        return {"total": total, "items": [item_record(db, i, owners=owners) for i in rows]}
 
 
 @app.get("/api/v1/display/feed")
@@ -803,7 +803,8 @@ def display_feed(after: float = Query(ge=0, allow_inf_nan=False), after_id: str 
         rows = db.scalars(unique_items(False).where(
             (available_at > after) | ((available_at == after) & (Item.id > after_id))
         ).order_by(available_at, Item.id).limit(100)).all()
-        return {"items": [item_record(db, i) for i in rows], "after": (rows[-1].ai_review.get("reviewed_at") or rows[-1].created_at) if rows else after,
+        owners = owner_names(db, [i.id for i in rows])
+        return {"items": [item_record(db, i, owners=owners) for i in rows], "after": (rows[-1].ai_review.get("reviewed_at") or rows[-1].created_at) if rows else after,
             "after_id": rows[-1].id if rows else after_id}
 
 
@@ -819,6 +820,7 @@ def snapshot(demo: bool = False, current=Depends(auth.screen)):
         recent = db.scalars(
             pending_items(demo).order_by(Item.created_at.desc(), Item.id).limit(20)
         ).all()
+        recent_owners = owner_names(db, [i.id for i in recent])
         latest = db.scalars(
             select(Event).where(Event.task_id.in_(public_tasks()), Event.is_demo == demo).order_by(Event.id.desc()).limit(30)
         ).all()
@@ -860,7 +862,7 @@ def snapshot(demo: bool = False, current=Depends(auth.screen)):
             "task_scatter": [{"time": t.created_at, "duration": max(0, (t.updated_at if t.status in ("succeeded", "failed", "action_required") else now) - t.created_at), "status": t.status, "attempts": t.attempts, "kind": t.kind} for t in db.scalars(select(Task).where(Task.id.in_(public_tasks()), Task.is_demo == demo, Task.created_at >= start).order_by(Task.created_at.desc()).limit(300))],
             "collectors": collector_status(db, demo, "admin"),
             # 展示令牌与管理台看到同一份信息条目：不再替换标题。
-            "items": [item_record(db, i) for i in recent],
+            "items": [item_record(db, i, owners=recent_owners) for i in recent],
             "events": [
                 {
                     "id": e.id,

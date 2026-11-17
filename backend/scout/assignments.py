@@ -2,7 +2,7 @@
 
 from sqlalchemy import func, select
 
-from scout.information import item_record
+from scout.information import item_record, owner_names
 from scout.models import Delivery, Item
 
 ASSIGNED = ("accepted", "sent", "read", "claimed", "restored")
@@ -48,6 +48,11 @@ def assignment_facts(db, demo, now, admin):
     recent = db.execute(
         allocated.add_columns(Delivery).order_by(Delivery.sent_at.desc()).limit(30)
     ).all()
+    customer_rows = db.scalars(
+        unique_items(demo).where(Item.information_kind == "customer_update", *current_window(now))
+        .order_by(Item.created_at.desc(), Item.id).limit(30)
+    ).all()
+    owners = owner_names(db, [i.id for i, _ in recent] + [i.id for i in customer_rows])
     configured = all(
         (
             config.dingtalk_app_key,
@@ -79,8 +84,6 @@ def assignment_facts(db, demo, now, admin):
             }
             for i in backlog
         ],
-        "assigned_items": [item_record(db, i, admin) for i, d in recent],
-        "customer_items": [item_record(db, i, admin) for i in db.scalars(
-            unique_items(demo).where(Item.information_kind == "customer_update", *current_window(now))
-            .order_by(Item.created_at.desc(), Item.id).limit(30))],
+        "assigned_items": [item_record(db, i, admin, owners=owners) for i, d in recent],
+        "customer_items": [item_record(db, i, admin, owners=owners) for i in customer_rows],
     }

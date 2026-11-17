@@ -15,7 +15,7 @@ import { Customers } from "./Customers";
 import { TokenPanel, KeyIcon } from "./TokenPanel";
 import { Users } from "./Users";
 import { Spider } from "./Spider";
-import { clock, fullTime, status, errors } from "./types";
+import { clock, fullTime, sourceName, status, errors } from "./types";
 import type { Snapshot, Rule, Task, Item, Me, DingTalkConfig, InviteInfo } from "./types";
 import "./style.css";
 import "./display-layout.css";
@@ -657,11 +657,8 @@ function App() {
                   <h2>
                     信息库 <small>{data.pending_count} 条</small>
                   </h2>
-                  <Information
-                    slim
+                  <LibraryWall
                     items={library}
-                    lifecycle={false}
-                    autoScroll={!moving}
                     open={(item) => {
                       if (item.url)
                         request(`/items/${item.id}`)
@@ -911,6 +908,75 @@ function App() {
       )}
     </main>
   );
+}
+
+/** 信息库玻璃方块墙：8px 微行网格 + 内容实测高度（空洞≤8px）；宽度按文字量分档
+    并做确定性微扰（窄条/方块混排），内容填不满宽度自动降窄；宽度≤高度（方块或竖条）；
+    内容零截断（无 clamp，max-content 测高即全文）；无缝滚动、悬停暂停。 */
+const TINTS = ["tint-cyan", "tint-mint", "tint-pink", "tint-blue"];
+function LibraryWall({ items, open }: { items: Item[]; open: (item: Item) => void }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const ROW_H = 8, MARGIN_B = 8;
+    const layout = () => {
+      const cs = getComputedStyle(track);
+      const cgap = parseFloat(cs.columnGap) || 8;
+      const colW = parseFloat(cs.gridTemplateColumns) || 110;
+      const cards = [...track.querySelectorAll<HTMLElement>(".lib-card")];
+      cards.forEach((c) => {
+        const title = c.querySelector(".lib-title"), excerpt = c.querySelector(".lib-excerpt");
+        const len = ((title?.textContent?.length) || 0) + ((excerpt?.textContent?.length) || 0) * 0.8;
+        let col = Math.min(3, 1 + Math.floor(len / 45));
+        if (((len * 7) | 0) % 10 < 3) col = Math.min(3, col + 1);
+        let h = 0;
+        for (; col >= 1; col--) {
+          c.style.gridColumn = `span ${col}`;
+          c.style.height = "max-content";      // 自然高度：内容全量，测量不失真
+          h = c.offsetHeight;
+          c.style.height = "";
+          const w = col * colW + (col - 1) * cgap;
+          if (h >= w || col === 1) break;      // 内容填不满宽度会出洞 → 降窄
+        }
+        const w = col * colW + (col - 1) * cgap;
+        const rows = Math.max(
+          Math.ceil((w + MARGIN_B) / ROW_H),   // 可见高度≥宽度 → 方块或竖条
+          Math.ceil((h + 2 + MARGIN_B) / ROW_H) // 装下全部内容 + 下边距
+        );
+        c.style.gridColumn = `span ${col}`;
+        c.style.gridRow = `span ${rows}`;
+      });
+    };
+    layout();
+    const ro = new ResizeObserver(layout);
+    ro.observe(track);
+    if (document.fonts?.ready) document.fonts.ready.then(layout);
+    return () => ro.disconnect();
+  }, [items]);
+  const now = Date.now() / 1000;
+  const doubled = [...items, ...items];
+  return <>
+    <div className="lib-aurora" aria-hidden="true"><i /><i /><i /><i /></div>
+    <div className="lib-wall">
+      <div className="lib-track" ref={trackRef}>
+        {doubled.map((item, i) => {
+          const frag = item.fragments || [];
+          return <article key={`${item.id}:${i}`} className={`lib-card ${TINTS[(item.id.charCodeAt(0) + i) % TINTS.length]}`} onClick={() => open(item)}>
+            {now - item.created_at < 600 && <span className="lib-badge">新入库</span>}
+            <span className="lib-kicker">{sourceName(item)}{item.category ? ` · ${item.category}` : ""}</span>
+            <p className="lib-title">{item.title || "—"}</p>
+            {frag.length > 0 && <p className="lib-excerpt">{frag.slice(0, 2).map(f => f.text).join("　")}</p>}
+            {item.region && <div className="lib-tags"><span className="tag hi">{item.region}</span></div>}
+            <div className="lib-foot">
+              <div className="row"><span className="who">◈ 采集人 {item.owner_name || "—"}</span><span>采集 {clock(item.created_at)}</span></div>
+              <div className="row"><span>发布 {item.published_at || "—"}</span></div>
+            </div>
+          </article>;
+        })}
+      </div>
+    </div>
+  </>;
 }
 
 /** 顶部 KPI 指标条：采集 → 入库 → 认领 → 推送漏斗 + 采集健康度，全部来自快照现成字段 */
