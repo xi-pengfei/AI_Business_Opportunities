@@ -14,11 +14,11 @@ const EditIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 type Status = { cls: string; text: string; note?: string; tab: "on" | "attention" | "off" };
 function statusOf(c: Customer): Status {
   if (!c.enabled) return { cls: "st-off", text: "已停止", tab: "off" };
-  if (c.error_code) return { cls: "st-failed", text: "入口受限", note: errors[c.error_code] || "搜索入口等待恢复", tab: "attention" };
+  if (c.error_code) return { cls: "st-failed", text: "搜索异常", note: errors[c.error_code] || "搜索入口等待恢复", tab: "attention" };
   if (c.state === "running") return { cls: "st-on", text: "正在搜索", tab: "on" };
   if (!c.last_search_at) return { cls: "st-wait", text: "等待首次搜索", tab: "attention" };
-  // 监测中即可：下一轮复查时间放进悬浮提示，不再单列一个看不懂的状态
-  return { cls: "st-on", text: "监测中", note: `下次复查：${dateTime(c.next_run_at)}`, tab: "on" };
+  // 监测中即可：检索心跳放进悬浮提示，不占一列
+  return { cls: "st-on", text: "监测中", note: `上次自动检索 ${dateTime(c.last_search_at)} · 下次复查 ${dateTime(c.next_run_at)}`, tab: "on" };
 }
 
 type Tab = "all" | "on" | "attention" | "off";
@@ -197,13 +197,13 @@ export function Customers({request, manage = false}: {request: Request; manage?:
     <div className="page-head">
       <div>
         <h1 className="page-title">客户动向</h1>
-        <p className="page-sub">把命中商机归到客户身上，持续追踪招采、扩产、产能、信息化等信号变化。填写企业全称即可开始，参考网址用于辅助搜索。</p>
+        <p className="page-sub">添加客户后自动检索其公开动态，每天更新。点条数看明细。</p>
       </div>
     </div>
 
     <div className="kpis">
       <div className="kpi"><div className="kpi-l">监测客户</div><div className="kpi-v num">{customers.length}<small>家</small></div><div className="kpi-d">{enabledCount} 家监测中 · {customers.length-enabledCount} 家已停止</div></div>
-      <div className="kpi"><div className="kpi-l">需要关注</div><div className="kpi-v num c-amber">{attention}<small>家</small></div><div className="kpi-d">搜索入口异常或等待首次搜索</div></div>
+      <div className="kpi"><div className="kpi-l">需要关注</div><div className="kpi-v num c-amber">{attention}<small>家</small></div><div className="kpi-d">有客户搜不出结果，点状态看原因</div></div>
       <div className="kpi"><div className="kpi-l">近 30 天动向</div><div className="kpi-v num">{signalsTotal ?? "—"}<small>条</small></div><div className="kpi-d">点击「条数」查看该客户的动向明细</div></div>
     </div>
 
@@ -227,20 +227,17 @@ export function Customers({request, manage = false}: {request: Request; manage?:
       <div className="table-scroll no-fade">
         <table className="rule-table fit">
           <thead><tr>
-            <th style={{width:'5%'}}>序号</th>
             <th style={{width:'4%'}}><input type="checkbox" aria-label="全选本页" checked={pageRows.length>0&&pageRows.every(c=>selected.has(c.id))} onChange={selAllPage}/></th>
-            <th style={{width:'31%'}}>客户</th>
-            <th style={{width:'11%'}}>近 30 天入库</th>
-            <th style={{width:'14%'}}>最近搜索</th>
-            <th style={{width:'14%'}}>最后新增</th>
-            <th style={{width:'13%'}}>对接人</th>
-            <th style={{width:'8%'}}>操作</th>
+            <th style={{width:'42%'}}>客户</th>
+            <th style={{width:'13%'}}>近 30 天动向</th>
+            <th style={{width:'15%'}}>最近入库</th>
+            <th style={{width:'14%'}}>对接人</th>
+            <th style={{width:'12%'}}>操作</th>
           </tr></thead>
           <tbody>
-            {pageRows.map((c,i)=>{
+            {pageRows.map((c)=>{
               const s=statusOf(c);
               return <tr key={c.id}>
-                <td className="idx-cell">{(current-1)*pageSize+i+1}</td>
                 <td className="sel-cell"><input type="checkbox" aria-label={`选择 ${c.name}`} checked={selected.has(c.id)} onChange={()=>toggleSel(c.id)} disabled={busy}/></td>
                 <td>
                   <div className="cell-line">
@@ -249,8 +246,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
                     <span className={"st "+s.cls} title={s.note}>{s.text}</span>
                   </div>
                 </td>
-                <td><button type="button" className="count-cell" disabled={busy} onClick={()=>openDetail(c)} title="查看该客户的动向记录日志">{c.signal_count ?? 0} <small>条</small></button></td>
-                <td className="muted">{dateTime(c.last_search_at)}</td>
+                <td><button type="button" className="count-cell" disabled={busy} onClick={()=>openDetail(c)} title="查看该客户的动向明细">{c.signal_count ?? 0} <small>条</small></button></td>
                 <td className="muted">{dateTime(c.last_found_at)}</td>
                 <td className="muted">{c.owner_name||"—"}</td>
                 <td><div className="actions">
@@ -268,7 +264,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
           <button className="btn btn-sm" disabled={current>=pages} onClick={()=>setPage(current+1)}>下一页</button>
         </div>
       </div>}
-      {!filtered.length && <div className="empty">{customers.length && (q||tab!=="all") ? "没有符合条件的客户，试试调整搜索词或状态筛选。" : "还没有客户。点击「新增客户动向」，填写企业全称即可自动开始监测近 30 天动态。"}</div>}
+      {!filtered.length && <div className="empty">{customers.length && (q||tab!=="all") ? "没有符合条件的客户，试试调整搜索词或状态筛选。" : "还没有客户，点「新增客户动向」加第一家。"}</div>}
     </div>
 
     {open && <div className="drawer-layer">
@@ -278,17 +274,20 @@ export function Customers({request, manage = false}: {request: Request; manage?:
         <div className="dr-head">
           <div className="dr-eyebrow">{draft.id?"修改":"新增"} · 客户动向</div>
           <h2 className="dr-title" id="customer-editor-title" tabIndex={-1} ref={heading}>{draft.id?"修改客户":"新增客户动向"}</h2>
-          <p className="dr-sub">填写企业全称即可，其他叫法与参考网址帮助搜索更准。</p>
+          <p className="dr-sub">填写企业全称即可，其他叫法能帮搜索更准。</p>
         </div>
         <div className="dr-body">
           <form ref={form} id="customer-form" aria-labelledby="customer-editor-title" onSubmit={e=>{e.preventDefault();void save();}}>
             <label htmlFor="customer-name">企业全称 <span className="opt">必填</span></label>
             <input id="customer-name" name="name" required minLength={2} maxLength={120} value={draft.name} disabled={busy} onChange={e=>setDraft({...draft,name:e.target.value})}/>
-            <label htmlFor="customer-alias">其他叫法 <span className="opt">选填，逗号或换行分隔，最多 5 个 · 用于扩大搜索命中范围</span></label>
+            <label htmlFor="customer-alias">其他叫法 <span className="opt">选填，逗号或换行分隔，最多 5 个</span></label>
             <textarea id="customer-alias" name="aliases" rows={3} maxLength={600} value={draft.aliases} disabled={busy} onChange={e=>setDraft({...draft,aliases:e.target.value})} placeholder={"例如：西安装备制造\n陕直股份"}/>
-            <label htmlFor="customer-site">参考网址 <span className="opt">选填，逗号或换行分隔，最多 10 个</span></label>
-            <textarea id="customer-site" name="reference_urls" rows={3} maxLength={10000} spellCheck={false} autoCapitalize="none" value={draft.urls} disabled={busy} onChange={e=>setDraft({...draft,urls:e.target.value})} placeholder={"https://企业官网\nhttps://自媒体主页"}/>
-            <p className="hint">查找该客户的招采、扩产、产能、信息化和智能制造动态。参考网址用于辅助搜索，范围不限于这些网站；需要登录的平台仍需单独接入。</p>
+            <details className="adv">
+              <summary>高级：加参考网址（选填）</summary>
+              <label htmlFor="customer-site">参考网址 <span className="opt">逗号或换行分隔，最多 10 个</span></label>
+              <textarea id="customer-site" name="reference_urls" rows={3} maxLength={10000} spellCheck={false} autoCapitalize="none" value={draft.urls} disabled={busy} onChange={e=>setDraft({...draft,urls:e.target.value})} placeholder={"https://企业官网\nhttps://自媒体主页"}/>
+            </details>
+            <p className="hint">系统会自动用企业全称和其他叫法去搜；参考网址只是帮搜索更准，不填也行。</p>
           </form>
         </div>
         <div className="dr-foot">
@@ -308,16 +307,16 @@ export function Customers({request, manage = false}: {request: Request; manage?:
             {detailOf.customer.name}
             <span className={"st "+statusOf(detailOf.customer).cls} style={{marginLeft:10,verticalAlign:"middle"}}>{statusOf(detailOf.customer).text}</span>
           </h2>
-          <p className="dr-sub">最近搜索 {dateTime(detailOf.customer.last_search_at)} · 最后新增 {dateTime(detailOf.customer.last_found_at)}</p>
+          <p className="dr-sub">上次自动检索 {dateTime(detailOf.customer.last_search_at)} · 最近入库 {dateTime(detailOf.customer.last_found_at)}</p>
         </div>
         <div className="dr-body">
           {detailOf.loading&&<p className="empty">正在读取动向…</p>}
-          {!detailOf.loading&&!detailOf.signals.length&&<p className="empty">近 30 天暂无该客户的动向。监测会继续轮换搜索，并复查新增。</p>}
+          {!detailOf.loading&&!detailOf.signals.length&&<p className="empty">暂时没有新动向，系统每天自动复查。</p>}
           {!detailOf.loading&&detailOf.signals.map(s=><div className="signal-item" key={s.id}>
             <div className="signal-title">{s.url?<a href={s.url} target="_blank" rel="noopener noreferrer">{s.title}</a>:s.title}</div>
             <div className="cell-meta"><span className="chip">{s.topic}</span> 发布 {s.published_at||"—"} · 采集 {dateTime(s.created_at)}</div>
             {!!s.fragments?.length&&<div className="customer-fragments">{s.fragments.map((f,i)=><span key={i} title={f.text}>{f.text}</span>)}</div>}
-            {s.url&&<button type="button" className="text-button" onClick={()=>request(`/customer-signals/${s.id}`).then(d=>setEvidence({id:s.id,...d.evidence})).catch(e=>setError(e.message))}>查看采集原文</button>}
+            {s.url&&<button type="button" className="text-button" onClick={()=>evidence?.id===s.id?setEvidence(null):request(`/customer-signals/${s.id}`).then(d=>setEvidence({...d.evidence,id:s.id})).catch(e=>setError(e.message))}>{evidence?.id===s.id?"收起原文":"展开原文"}</button>}
             {evidence?.id===s.id&&<div className="customer-evidence-inline">
               <small>{evidence.content_kind==="search_excerpt"?"搜索摘要，尚未读取完整正文":"来源正文"}</small>
               <pre>{evidence.raw_content}</pre>
@@ -348,7 +347,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
           {!users.length&&<p className="empty">正在读取用户列表…</p>}
           <div className="assign-list" role="radiogroup" aria-label="选择对接人">
             <button type="button" role="radio" aria-checked={assignTarget===""} className={"assign-item"+(assignTarget===""?" on":"")} onClick={()=>setAssignTarget("")}>
-              <span className="assign-dot" aria-hidden/><span className="assign-name">不指定（清除现有对接人）</span>
+              <span className="assign-dot" aria-hidden/><span className="assign-name">暂不指定</span>
             </button>
             {users.map(u=><button type="button" role="radio" aria-checked={assignTarget===u.id} key={u.id} className={"assign-item"+(assignTarget===u.id?" on":"")} onClick={()=>setAssignTarget(u.id)}>
               <span className="assign-dot" aria-hidden/><span className="assign-name">{u.display_name}</span>

@@ -1737,6 +1737,11 @@ tr:hover .edit-name { opacity: 1; }
 .assign-item.on .assign-dot { border-color: var(--accent); }
 .assign-item.on .assign-dot::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent); }
 .assign-item .assign-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 编辑抽屉里的高级项折叠：默认收起参考网址 */
+.adv { margin: 4px 0 2px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.adv summary { cursor: pointer; font-size: 12.6px; color: var(--ink-3); user-select: none; }
+.adv summary:hover { color: var(--accent); }
+.adv[open] summary { color: var(--ink); margin-bottom: 4px; }
 .signal-item {
   border: 1px solid var(--line);
   border-radius: 10px;
