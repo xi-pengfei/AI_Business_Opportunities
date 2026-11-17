@@ -1,13 +1,14 @@
 import hashlib
 import re
 import time
+from types import SimpleNamespace
 
 from sqlalchemy import func, select
 from sqlalchemy import text as sql_text
 
 from scout.config import settings
 from scout.db import Session
-from scout.models import Attempt, Document, Event, Item, Outbox, RemovedEvidence, Rule, Task, uid
+from scout.models import Attempt, Document, Event, Item, Outbox, RemovedEvidence, Rule, Task, XhsAccount, uid
 from scout.providers import ProviderError, canonical_url, clean_text, search
 from scout.quality import describe
 
@@ -280,11 +281,9 @@ def finish(task_id, token, results=None, error=None, prepared=None):
 
 def xhs_config(payload):
     """按任务载荷取该账号的连接器配置；无账号的遗留任务回落到全局 .env 配置。"""
-    from types import SimpleNamespace
     account_id = payload.get("xhs_account_id")
     if not account_id:
         return settings()
-    from scout.models import XhsAccount
     with Session() as db:
         account = db.get(XhsAccount, account_id)
     if account is None or not account.enabled:

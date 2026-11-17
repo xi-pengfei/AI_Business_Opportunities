@@ -13,7 +13,6 @@ export function Users({request,me}:{request:(path:string,options?:RequestInit)=>
   // 新建账号抽屉
   const [open,setOpen]=useState(false);
   const [username,setUsername]=useState(''),[displayName,setDisplayName]=useState(''),[password,setPassword]=useState(''),[role,setRole]=useState<'admin'|'member'>('member');
-  const form=useRef<HTMLFormElement>(null);
   const heading=useRef<HTMLHeadingElement>(null);
   // 行内重置密码
   const [resetting,setResetting]=useState<string|null>(null),[newPass,setNewPass]=useState('');
@@ -144,7 +143,7 @@ export function Users({request,me}:{request:(path:string,options?:RequestInit)=>
           <p className="dr-sub">创建后把用户名和初始密码告诉对方即可登录。</p>
         </div>
         <div className="dr-body">
-          <form ref={form} id="user-form" aria-labelledby="user-editor-title" onSubmit={e=>{e.preventDefault();if(password.length>=8)create();}}>
+          <form id="user-form" aria-labelledby="user-editor-title" onSubmit={e=>{e.preventDefault();if(password.length>=8)create();}}>
             <label htmlFor="user-username">用户名 <span className="opt">必填，2-64 字符，中英文均可，不含空格</span></label>
             <input id="user-username" name="username" required minLength={2} maxLength={64} value={username} disabled={busy} onChange={e=>setUsername(e.target.value)} placeholder="例如：zhangsan 或 张三"/>
             <label htmlFor="user-display">姓名 <span className="opt">选填，页面上显示的名字</span></label>

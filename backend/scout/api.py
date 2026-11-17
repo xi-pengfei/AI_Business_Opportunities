@@ -1172,7 +1172,6 @@ def xhs_update_account(account_id: str, body: XhsAccountInput, user=Depends(auth
                 rule.enabled = body.enabled
             rule.next_run_at = time.time()
         db.flush()
-        rule = get_xhs_rule(db, account)
         return xhs_account_record(db, account, rule, db.get(User, account.owner_user_id) if account.owner_user_id else None, None)
 
 

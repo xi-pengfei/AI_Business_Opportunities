@@ -375,7 +375,7 @@ function SignalsReadOnly({request,error,setError}:{request:Request;error:string;
   const items=(result?.items||[]).filter(s=>{const q=query.trim().toLowerCase();return !q||s.customer_name.toLowerCase().includes(q)||s.title.toLowerCase().includes(q);});
   return <>
     {error&&<p className="error" role="alert">{error}</p>}
-    <div className="page-head"><div><h1 className="page-title">客户动向</h1><p className="page-sub">客户名称命中、主题相关、发布时间在近 30 天内的入库信息。</p></div></div>
+    <div className="page-head"><div><h1 className="page-title">客户动向</h1><p className="page-sub">近 30 天内与这些客户相关的入库信息。</p></div></div>
     <div className="seg-tabs"><div className="search-box"><input type="search" placeholder="搜索客户或标题…" value={query} onChange={e=>setQuery(e.target.value)}/></div></div>
     <div className="table-card">
       <div className="table-scroll">

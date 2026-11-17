@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { errors, type Request } from "./types";
+import { errors, type Me, type Request } from "./types";
 import "./xiaohongshu.css";
 
 type XhsAccount = {
@@ -10,7 +10,6 @@ type XhsAccount = {
   runs_total: number;
 };
 type RunRow = { id: string; query: string; status: string; attempts: number; error_code: string | null; discovered: number; created_at: number; updated_at: number };
-type Me = { id: string; role: string; display_name: string; username: string } | null;
 type Draft = { id?: string; name: string; url: string; token: string; query: string };
 const empty: Draft = { name: "", url: "", token: "", query: "" };
 const dateTime = (value?: number) => value ? new Date(value * 1000).toLocaleString("zh-CN", {timeZone:"Asia/Shanghai", hour12:false}) : "—";
@@ -40,7 +39,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "off", label: "已停止" },
 ];
 
-export function Xiaohongshu({request, me}: {request: Request; me: Me}) {
+export function Xiaohongshu({request, me}: {request: Request; me: Me | null}) {
   const [accounts, setAccounts] = useState<XhsAccount[]>([]);
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
@@ -60,7 +59,7 @@ export function Xiaohongshu({request, me}: {request: Request; me: Me}) {
   const [qrOf, setQrOf] = useState<{account: XhsAccount; img: string; expires: number} | null>(null);
   const qrTitle = useRef<HTMLHeadingElement>(null);
   // 爬取批次明细抽屉（点数字链接打开）
-  const [runsOf, setRunsOf] = useState<{account: XhsAccount; total: number; items: RunRow[]} | null>(null);
+  const [runsOf, setRunsOf] = useState<{account: XhsAccount; total: number; items: RunRow[]; loading: boolean} | null>(null);
   const runsTitle = useRef<HTMLHeadingElement>(null);
 
   const canManage = (a: XhsAccount) => !!me && (me.role === "admin" || a.owner_user_id === me.id);
@@ -104,8 +103,8 @@ export function Xiaohongshu({request, me}: {request: Request; me: Me}) {
     if (!runsOf) return;
     let alive = true;
     request(`/xiaohongshu/accounts/${runsOf.account.id}/runs`)
-      .then((d: {account: string; total: number; items: RunRow[]}) => { if (alive) setRunsOf(p => p && {account: p.account, total: d.total, items: d.items}); })
-      .catch((e: Error) => { if (alive) setError(e.message); });
+      .then((d: {account: string; total: number; items: RunRow[]}) => { if (alive) setRunsOf(p => p && {...p, total: d.total, items: d.items, loading: false}); })
+      .catch((e: Error) => { if (alive) { setError(e.message); setRunsOf(p => p && {...p, loading: false}); } });
     return () => { alive = false; };
   }, [runsOf?.account.id, request]);
 
@@ -161,7 +160,7 @@ export function Xiaohongshu({request, me}: {request: Request; me: Me}) {
     finally { setBusy(false); }
   }
 
-  function openRuns(a: XhsAccount) { setRunsOf({account:a, total:0, items:[]}); requestAnimationFrame(() => { runsTitle.current?.focus(); }); }
+  function openRuns(a: XhsAccount) { setRunsOf({account:a, total:0, items:[], loading:true}); requestAnimationFrame(() => { runsTitle.current?.focus(); }); }
 
   const attention = accounts.filter(a=>statusOf(a).tab==="attention").length;
   const enabledCount = accounts.filter(a=>statusOf(a).tab!=="off").length;
@@ -309,8 +308,9 @@ export function Xiaohongshu({request, me}: {request: Request; me: Me}) {
           <p className="dr-sub">当前关键词：{runsOf.account.rule.query.split("\n").filter(Boolean).join("；") || "—"}</p>
         </div>
         <div className="dr-body">
-          {!runsOf.items.length && <p className="empty">正在读取批次记录…</p>}
-          <div className="table-scroll">
+          {runsOf.loading && <p className="empty">正在读取批次记录…</p>}
+          {!runsOf.loading && !runsOf.items.length && <p className="empty">还没有爬取记录，登录后系统会按关键词开始采集。</p>}
+          {!runsOf.loading && <div className="table-scroll">
             <table className="rule-table">
               <thead><tr><th>开始时间</th><th>状态</th><th>发现</th><th>尝试</th></tr></thead>
               <tbody>
@@ -327,8 +327,7 @@ export function Xiaohongshu({request, me}: {request: Request; me: Me}) {
                 </tr>)}
               </tbody>
             </table>
-          </div>
-          {runsOf.items.length>0 && !runsOf.total && <p className="empty">暂无批次记录。</p>}
+          </div>}
         </div>
         <div className="dr-foot">
           <span className="dr-meta">累计 {runsOf.total} 次</span>

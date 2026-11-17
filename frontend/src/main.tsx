@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { CollectorMonitor } from "./CollectorMonitor";
 import "./collector-monitor.css";
-import { Charts, FlowPanel, HitRatePanel, SourcePanel } from "./Charts";
-import type { ChartSelection } from "./Charts";
+import { FlowPanel, HitRatePanel, SourcePanel } from "./Charts";
 import { RegionMap } from "./RegionMap";
 import { expandCargo, landFragment, cargoKey } from "./fragments";
 import type { Cargo } from "./fragments";
@@ -17,7 +16,7 @@ import { Customers } from "./Customers";
 import { TokenPanel, KeyIcon } from "./TokenPanel";
 import { Users } from "./Users";
 import { Spider } from "./Spider";
-import { clock, fullTime, sourceName, status, errors } from "./types";
+import { clock, fullTime, sourceName, status } from "./types";
 import type { Snapshot, Rule, Task, Item, Me, DingTalkConfig, InviteInfo } from "./types";
 import "./style.css";
 import "./display-layout.css";
@@ -203,10 +202,8 @@ function App() {
   const [page, setPage] = useState(
     ["display", "rules", "customers", "xiaohongshu", "tasks", "information", "analysis", "users"].includes(location.pathname.slice(1)) ? location.pathname.slice(1) : "rules",
   );
-  const demo = false;
   const [fullscreen,setFullscreen]=useState(!!document.fullscreenElement);
   useEffect(()=>{const changed=()=>setFullscreen(!!document.fullscreenElement);document.addEventListener('fullscreenchange',changed);return()=>document.removeEventListener('fullscreenchange',changed);},[]);
-  const [chartSelection, setChartSelection] = useState<ChartSelection | null>(null);
   const [data, setData] = useState<Snapshot | null>(null);
   const [rules, setRules] = useState<Rule[]>([]),
     [tasks, setTasks] = useState<Task[]>([]),
@@ -260,7 +257,7 @@ function App() {
   const [streamState, setStreamState] = useState("连接中");
   const refreshing = useRef(false);
   const activeView = useRef("");
-  activeView.current = `${token}:${demo}:${page}`;
+  activeView.current = `${token}:${page}`;
   const request = useCallback(
     async (path: string, options: RequestInit = {}) => {
       const response = await fetch(base + path, {
@@ -290,11 +287,24 @@ function App() {
   const refresh = useCallback(async () => {
     if (!token || refreshing.current) return;
     refreshing.current = true;
-    const viewKey = `${token}:${demo}:${page}`;
+    const viewKey = `${token}:${page}`;
+    // 管理台各页的数据与大屏快照并行、独立拉取：快照较重（数秒），不应挡住页面首屏。
+    if (page !== "display") {
+      void Promise.all([
+        request("/rules"),
+        request("/tasks"),
+        request(`/items?status=${informationStatus}`),
+      ])
+        .then(([r, t, i]) => {
+          if (activeView.current !== viewKey) return;
+          setRules(r);
+          setTasks(t);
+          setItems(i);
+        })
+        .catch(() => {});
+    }
     try {
-      const snapshot: Snapshot = await request(
-        `/display/snapshot?demo=${demo}`,
-      );
+      const snapshot: Snapshot = await request("/display/snapshot");
       if (activeView.current !== viewKey) return;
       setData(snapshot);
       assignedIds.current = new Set([...snapshot.assigned_items, ...(snapshot.customer_items || [])].map(i=>i.id));
@@ -324,17 +334,6 @@ function App() {
         if (!activeCargo.current) nextCargo();
       }
       hydrated.current = true;
-      if (page !== "display") {
-        const [r, t, i] = await Promise.all([
-          request("/rules"),
-          request(`/tasks?demo=${demo}`),
-          request(`/items?demo=${demo}&status=${informationStatus}`),
-        ]);
-        if (activeView.current !== viewKey) return;
-        setRules(r);
-        setTasks(t);
-        setItems(i);
-      }
     } catch (e) {
       if (activeView.current !== viewKey) return;
       setConnected(false);
@@ -342,9 +341,8 @@ function App() {
     } finally {
       refreshing.current = false;
     }
-  }, [token, demo, page, request, nextCargo, informationStatus]);
+  }, [token, page, request, nextCargo, informationStatus]);
   useEffect(() => {
-    setChartSelection(null);
     hydrated.current = false;
     seen.current.clear();
     setMoving(null);
@@ -378,7 +376,7 @@ function App() {
       try {
         setStreamState("连接中");
         const response = await fetch(
-          `${base}/display/events?demo=${demo}&after=${cursor}`,
+          `${base}/display/events?after=${cursor}`,
           {
             headers: { Authorization: `Bearer ${token}` },
             signal: control.signal,
@@ -419,7 +417,7 @@ function App() {
       clearTimeout(retryTimer);
       clearTimeout(refreshTimer);
     };
-  }, [token, demo]);
+  }, [token]);
   async function action(fn: () => Promise<unknown>, success: string) {
     setBusy(true);
     setError("");
@@ -544,15 +542,15 @@ function App() {
 
   const navRules = rules.filter(r=>r.provider!=="demo"&&r.provider!=="xiaohongshu"&&!r.search_spec?.retired).length;
   const liveTasks = tasks.filter(t=>["running","queued","retry_wait"].includes(t.status)).length;
-  const crumb = ({
-    rules:["网络商机","商机主题列表"],
-    customers:["客户动向","动向明细"],
-    xiaohongshu:["小红书","账号与关键词"],
-    tasks:["任务运行","实时任务"],
-    information:["信息库","已入库档案"],
-    analysis:["系统分析","命中率与地域分布"],
-    users:["系统设置","用户管理"],
-  } as Record<string,[string,string]>)[page]||["管理台",""];
+  const crumbTitle = ({
+    rules: "网络商机",
+    customers: "客户动向",
+    xiaohongshu: "小红书采集",
+    tasks: "任务运行",
+    information: "信息库",
+    analysis: "系统分析",
+    users: "用户管理",
+  } as Record<string, string>)[page] || "管理台";
   const navIcon=(paths:string[])=>(
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       {paths.map((d,i)=><path key={i} d={d}/>)}
@@ -561,7 +559,7 @@ function App() {
   const NAV:Array<[string,string,string[]]>= [
     ["rules","网络商机",["M3 17l5-5 4 3 5-7 4 4","M3 21h18"]],
     ["customers","客户动向",["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2","M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z","M22 21v-2a4 4 0 0 0-3-3.87"]],
-    ["xiaohongshu","小红书",["M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-5 4z","M8 9h8","M8 12h5"]],
+    ["xiaohongshu","小红书采集",["M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-5 4z","M8 9h8","M8 12h5"]],
     ["tasks","任务运行",["M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18","M12 7v5l3.5 2"]],
     ["information","信息库",["M4 19.5A2.5 2.5 0 0 1 6.5 17H20","M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"]],
     ["analysis","系统分析",["M3 3v18h18","M8 16v-5","M13 16V8","M18 16v-3"]],
@@ -610,15 +608,11 @@ function App() {
               {message}
             </p>
           )}
-          {display && data && (
-            <>
-              <KpiStrip data={data} />
+              {display && data && (
+                <>
+                  <KpiStrip data={data} />
 
-              {chartSelection && <ChartRecords key={`${chartSelection.start}:${chartSelection.end}:${chartSelection.provider || ""}:${chartSelection.region || ""}`}
-                selection={chartSelection} request={request} close={() => setChartSelection(null)}
-                open={(item) => request(`/items/${item.id}`).then(setDetail).catch(e => setError(e.message))} />}
-
-              <div className="workfield stage-grid">
+                  <div className="workfield stage-grid">
                 <section className="panel terminal">
                   <div className="lib-aurora" aria-hidden="true"><i /><i /><i /><i /></div>
                   <h2>信息来源</h2>
@@ -762,9 +756,9 @@ function App() {
           <div className="console-main">
             <header className="mast console-top">
               <div className="console-crumb">
-                <span>{crumb[0]}</span>
+                <span>管理台</span>
                 <span className="console-crumb-sep" aria-hidden="true">/</span>
-                <b>{crumb[1]}</b>
+                <b>{crumbTitle}</b>
               </div>
               <div className="toolbar">
                 <button onClick={() => navigate("display")}>展示大屏</button>
@@ -788,7 +782,6 @@ function App() {
                   {message}
                 </p>
               )}
-              {!data && <div className="empty">正在读取运行状态…</div>}
               {page === "analysis" && data && (
                 <div className="analysis-grid">
                   <HitRatePanel data={data} />
@@ -847,19 +840,19 @@ function App() {
                   </div>
                   <p>
                     {detail.evidence.content_kind === "search_excerpt"
-                      ? "搜索摘要（未获取完整正文）"
+                      ? "只有搜索摘要"
                       : "来源正文"}{" "}
                     · {clock(detail.created_at)}
                   </p>
                   <a href={detail.url} target="_blank" rel="noopener noreferrer">
                     查看原始网址
                   </a>
-                  {detail.region_evidence && <p>地区依据：{detail.region_evidence}</p>}
-                  {detail.ai_review?.reason && <p>AI 审核：{detail.ai_review.reason} · {detail.ai_review.model}</p>}
-                  {detail.ai_review?.deduplication && <p>相似信息比对：{detail.ai_review.deduplication.reason}</p>}
+                  {detail.region_evidence && <p>地区判断：{detail.region_evidence}</p>}
+                  {detail.ai_review?.reason && <p>审核意见：{detail.ai_review.reason}</p>}
+                  {detail.ai_review?.deduplication && <p>查重说明：{detail.ai_review.deduplication.reason}</p>}
                   {detail.related_item_id && <p>{detail.relation_kind==='update'?'这是关联商机的新进展':'已关联到同一商机'} <button className="text-button" onClick={()=>request(`/items/${detail.related_item_id}`).then(setDetail).catch(e=>setError(e.message))}>查看关联商机</button></p>}
                   {!!detail.source_urls?.length && <div><p>原始来源网址</p>{detail.source_urls.map(url=><p key={url}><a href={url} target="_blank" rel="noopener noreferrer">{url}</a></p>)}</div>}
-                  {detail.ai_review?.evidence && <p>判断依据：{detail.ai_review.evidence}</p>}
+                  {detail.ai_review?.evidence && <p>依据：{detail.ai_review.evidence}</p>}
                   {detail.ai_review?.error && <p>审核暂未完成：{detail.ai_review.error}</p>}
                   {detail.quality_status==='review_required' && <button disabled={busy} onClick={()=>action(()=>request(`/items/${detail.id}/review`,{method:'POST'}),'已重新加入审核队列')}>重新审核</button>}
                   <pre>{detail.evidence.raw_content}</pre>
