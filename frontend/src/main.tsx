@@ -794,7 +794,6 @@ function App() {
               {page === "tasks" && (
                 <Tasks
                   tasks={tasks}
-                  busy={busy}
                   onRetry={(t) =>
                     action(
                       () => request(`/tasks/${t.id}/retry`, { method: "POST" }),

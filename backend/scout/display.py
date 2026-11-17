@@ -2,7 +2,7 @@
 
 import time
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, select
 
 from scout.models import Document, Event, Item, Task
 
@@ -104,29 +104,80 @@ def collector_status(db, demo, role):
     from scout.models import Rule
 
     now = time.time()
-    output = []
-    for rule in db.scalars(
+    rules = db.scalars(
         select(Rule).where(
             Rule.enabled.is_(True), Rule.source_type.in_(("public_tender", "social_demand", "customer_watch")), Rule.provider == "demo" if demo else Rule.provider != "demo"
         ).order_by(Rule.created_at, Rule.id)
-    ):
-        latest = db.scalar(
+    ).all()
+    rule_ids = [r.id for r in rules]
+    if not rule_ids:
+        return []
+
+    # 以下全部整批一次查询；逐规则查会做上百次全表扫（tasks 表无规则过滤时很大）。
+    latest_by = {
+        t.rule_id: t
+        for t in db.scalars(
             select(Task)
-            .where(Task.rule_id == rule.id, Task.kind == "search")
-            .order_by(Task.created_at.desc())
-            .limit(1)
+            .where(Task.rule_id.in_(rule_ids), Task.kind == "search")
+            .distinct(Task.rule_id)
+            .order_by(Task.rule_id, Task.created_at.desc(), Task.id.desc())
         )
-        children = (
-            dict(
-                db.execute(
-                    select(Task.status, func.count())
-                    .where(Task.parent_id == latest.id)
-                    .group_by(Task.status)
-                ).all()
+    }
+    discovered = func.coalesce(Task.result["discovered"].as_integer(), 0)
+    # 口径与原逐条版本一致：rounds/last_result_at 不区分 demo，last_success_at 只算本侧数据。
+    stats = {
+        row.rule_id: row
+        for row in db.execute(
+            select(
+                Task.rule_id,
+                func.count().label("rounds"),
+                func.max(case(
+                    (and_(Task.status == "succeeded", discovered > 0), Task.updated_at),
+                    else_=None,
+                )).label("last_result_at"),
             )
-            if latest
-            else {}
+            .where(Task.rule_id.in_(rule_ids), Task.kind == "search")
+            .group_by(Task.rule_id)
         )
+    }
+    success = {
+        row.rule_id: row.last_success_at
+        for row in db.execute(
+            select(
+                Task.rule_id,
+                func.max(Task.updated_at).label("last_success_at"),
+            )
+            .where(Task.rule_id.in_(rule_ids), Task.kind == "search", Task.is_demo == demo, Task.status == "succeeded")
+            .group_by(Task.rule_id)
+        )
+    }
+    latest_ids = [t.id for t in latest_by.values()]
+    children_by: dict[str, dict[str, int]] = {}
+    if latest_ids:
+        for parent_id, status, count in db.execute(
+            select(Task.parent_id, Task.status, func.count())
+            .where(Task.parent_id.in_(latest_ids))
+            .group_by(Task.parent_id, Task.status)
+        ):
+            children_by.setdefault(parent_id, {})[status] = count
+    duplicates_by = dict(db.execute(
+        select(Task.parent_id, func.count())
+        .where(Task.parent_id.in_(latest_ids), Task.result["duplicate"].as_boolean().is_(True))
+        .group_by(Task.parent_id)
+    ).all()) if latest_ids else {}
+    opportunity_by = dict(db.execute(
+        select(Task.rule_id, func.max(Item.created_at))
+        .join(Item, Item.id == Task.result["item_id"].as_string())
+        .where(Task.rule_id.in_(rule_ids), Item.is_demo == demo, Item.quality_status == "active",
+               Item.information_kind.in_(("opportunity", "demand")))
+        .group_by(Task.rule_id)
+    ).all()) if rule_ids else {}
+
+    output = []
+    for rule in rules:
+        latest = latest_by.get(rule.id)
+        stats_row = stats.get(rule.id)
+        children = children_by.get(latest.id, {}) if latest else {}
         total = sum(children.values())
         done = sum(children.get(s, 0) for s in ("succeeded", "failed", "action_required"))
         state = latest.status if latest else "queued"
@@ -139,7 +190,7 @@ def collector_status(db, demo, role):
                 "query": latest.payload.get("query", "") if latest and role == "admin" else "",
                 "state": state,
                 "provider": rule.provider,
-                "last_success_at": db.scalar(select(func.max(Task.updated_at)).where(Task.rule_id == rule.id, Task.kind == "search", Task.is_demo == demo, Task.status == "succeeded")),
+                "last_success_at": success.get(rule.id),
                 "next_action_at": latest.available_at if latest and state == "retry_wait" else rule.next_run_at,
                 "error_code": latest.error_code if latest else None,
                 "next_run_at": rule.next_run_at,
@@ -147,24 +198,14 @@ def collector_status(db, demo, role):
                 "search_page": latest.payload.get("page",1) if latest else 1,
                 "search_engine": latest.result.get("search_engine") or latest.payload.get("engine", "") or ("xiaohongshu" if rule.provider == "xiaohongshu" else "") if latest else "",
                 "search_outcome": latest.error_code or latest.result.get("search_outcome", "") if latest else "",
-                "last_result_at": db.scalar(select(func.max(Task.updated_at)).where(Task.rule_id == rule.id, Task.kind == "search", Task.status == "succeeded", Task.result["discovered"].as_integer() > 0)),
-                "last_opportunity_at": db.scalar(select(func.max(Item.created_at)).where(Item.is_demo==demo,Item.quality_status=="active",Item.information_kind.in_(("opportunity", "demand")), Item.id.in_(select(Task.result["item_id"].as_string()).where(Task.rule_id == rule.id)))),
+                "last_result_at": stats_row.last_result_at if stats_row else None,
+                "last_opportunity_at": opportunity_by.get(rule.id),
                 "waiting_recheck": state in ("next_batch", "failed") and rule.next_run_at > time.time()+5,
 
                 "done": done,
                 "total": total,
-                "duplicates": sum(
-                    1
-                    for result in db.scalars(select(Task.result).where(Task.parent_id == latest.id))
-                    if result.get("duplicate")
-                )
-                if latest
-                else 0,
-                "rounds": db.scalar(
-                    select(func.count())
-                    .select_from(Task)
-                    .where(Task.rule_id == rule.id, Task.kind == "search")
-                ),
+                "duplicates": duplicates_by.get(latest.id, 0) if latest else 0,
+                "rounds": stats_row.rounds if stats_row else 0,
                 "max_results": rule.max_results,
             }
         )

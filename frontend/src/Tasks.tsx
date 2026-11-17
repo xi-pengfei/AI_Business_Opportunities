@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { clock, errors, status } from "./types";
 import type { Task } from "./types";
-
 type Tab = "all" | "running" | "attention" | "done";
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "全部" },
@@ -15,9 +14,14 @@ function tabOf(t: Task): Tab {
   return "done";
 }
 
-export function Tasks({tasks, busy, onRetry}: {tasks: Task[]; busy: boolean; onRetry: (t: Task) => void}) {
+export function Tasks({tasks, onRetry}: {tasks: Task[]; onRetry: (t: Task) => Promise<unknown> | void}) {
   const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const retry = async (t: Task) => {
+    setRetrying(true);
+    try { await onRetry(t); } finally { setRetrying(false); }
+  };
   const running = tasks.filter(t => tabOf(t) === "running").length;
   const attention = tasks.filter(t => tabOf(t) === "attention").length;
   const q = query.trim().toLowerCase();
@@ -69,7 +73,7 @@ export function Tasks({tasks, busy, onRetry}: {tasks: Task[]; busy: boolean; onR
               <td>{t.error_code ? errors[t.error_code] || t.error_code : "—"}</td>
               <td><div className="actions">
                 {["failed", "action_required"].includes(t.status)
-                  ? <button className="btn btn-sm btn-quiet" disabled={busy} onClick={() => onRetry(t)}>重试</button>
+                  ? <button className="btn btn-sm btn-quiet" disabled={retrying} onClick={() => void retry(t)}>重试</button>
                   : <span className="muted">—</span>}
               </div></td>
             </tr>)}

@@ -58,8 +58,8 @@ class Task(Base):
     __tablename__ = "tasks"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     kind: Mapped[str] = mapped_column(String(30))
-    rule_id: Mapped[str | None] = mapped_column(ForeignKey("monitor_rules.id"))
-    parent_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"))
+    rule_id: Mapped[str | None] = mapped_column(ForeignKey("monitor_rules.id"), index=True)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"), index=True)
     idempotency_key: Mapped[str] = mapped_column(String(200), unique=True)
     config_version: Mapped[int] = mapped_column(Integer, default=1)
     payload: Mapped[dict] = mapped_column(JSON)

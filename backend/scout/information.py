@@ -11,7 +11,8 @@ def owner_names(db, item_ids):
     """批量解析采集人（=词条负责人）：普通条目走 Task.result.item_id → Task.rule_id，
     客户监控条目走 CustomerSignal → Customer → Rule.customer_id，
     两条路都归到 Rule.owner_user_id；同一条目取最新任务对应的负责人。
-    tasks 表无 item_id 索引，必须整批一次查询，逐条调用会全表扫 N 次。"""
+    tasks 表无 item_id 索引，必须整批一次查询，逐条调用会全表扫 N 次。
+    两段都用 left join：查不到负责人也返回 None 占位，调用方不必再逐条补查。"""
     ids = list({i for i in item_ids if i})
     if not ids:
         return {}
@@ -19,8 +20,8 @@ def owner_names(db, item_ids):
     out = {}
     for item_id, name in db.execute(
         select(Task.result["item_id"].as_string(), who)
-        .join(Rule, Rule.id == Task.rule_id)
-        .join(User, User.id == Rule.owner_user_id)
+        .join(Rule, Rule.id == Task.rule_id, isouter=True)
+        .join(User, User.id == Rule.owner_user_id, isouter=True)
         .where(Task.result["item_id"].as_string().in_(ids))
         .order_by(Task.created_at.desc())
     ):
@@ -30,9 +31,9 @@ def owner_names(db, item_ids):
     if rest:
         for item_id, name in db.execute(
             select(CustomerSignal.id, who)
-            .join(Customer, Customer.id == CustomerSignal.customer_id)
-            .join(Rule, Rule.customer_id == Customer.id)
-            .join(User, User.id == Rule.owner_user_id)
+            .join(Customer, Customer.id == CustomerSignal.customer_id, isouter=True)
+            .join(Rule, Rule.customer_id == Customer.id, isouter=True)
+            .join(User, User.id == Rule.owner_user_id, isouter=True)
             .where(CustomerSignal.id.in_(rest))
         ):
             out[item_id] = name
@@ -64,9 +65,8 @@ def item_record(db, item, admin=True, owners=None):
         state = item.quality_status
     if item.quality_status == "merged":
         state = "merged"
-    owner = owners.get(item.id) if owners is not None else None
-    if owner is None:
-        owner = owner_name(db, item.id)
+    # owners 由调用方整批传入（owner_names 保证全 id 覆盖）；只在未传时才逐条解析。
+    owner = owners.get(item.id) if owners is not None else owner_name(db, item.id)
     row.update(
         source_name=SOURCES.get(item.source_type, item.source_type),
         business_status=state,
