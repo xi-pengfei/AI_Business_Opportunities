@@ -55,13 +55,16 @@ def test_customer_signal_joins_library_without_claim_backlog(client, database):
     tick(Settings(_env_file=None,deepseek_api_key='test-key'),database,
          reviewer=lambda *args: {'decision':'customer_news','reason':'扩产新闻，无明确采购','evidence':''})
     snap=client.get('/api/v1/display/snapshot').json()
-    assert snap['item_count']==1 and snap['collectors']==[]
+    # 客户监测是大屏的一路采集器，以客户全称出现在采集器列表里
+    assert snap['item_count']==1 and [c['name'] for c in snap['collectors']]==['示例光电股份有限公司']
     assert snap['pending_count']==0 and snap['backlog_count']==0
     assert snap['customer_items'][0]['source_name']=='监控'
     assert snap['customer_items'][0]['requires_claim'] is False
     assert client.get('/api/v1/items').json()[0]['source_type']=='customer_watch'
+    # 展示令牌看全量（eec8275：展示模式不再脱敏）：客户信号含真实名称、标题与原文链接。
     masked=client.get('/api/v1/customer-signals',headers={'Authorization':'Bearer test-display'}).json()
-    assert '示例' not in str(masked) and 'url' not in masked['items'][0]
+    assert masked['items'][0]['matched_name']=='示例光电股份有限公司'
+    assert masked['items'][0]['url']=='https://example.com/news/1'
     assert client.get('/api/v1/customers',headers={'Authorization':'Bearer test-display'}).status_code==403
 
 

@@ -4,7 +4,7 @@ import { errors } from "./types";
 type Request = (path: string, options?: RequestInit) => Promise<any>;
 type Customer = { id: string; name: string; aliases: string[]; website?: string; reference_urls?:string[]; rule_id: string; enabled: boolean; query?: string; state: string; error_code?: string; last_search_at?: number; last_found_at?: number; signal_count?: number; owner_user_id?: string | null; owner_name?: string | null; next_run_at: number };
 type UserRow = { id: string; display_name: string; username: string; is_active: boolean };
-type Signal = { id: string; customer_name: string; title: string; url?: string; topic: string; fragments?: {text:string}[]; published_at?: string; created_at: number; matched_name?: string };
+type Signal = { id: string; customer_name: string; title: string; url?: string; topic: string; fragments?: {text:string}[]; published_at?: string; created_at: number; matched_name?: string; content_kind?: string };
 type Draft = { id?: string; name: string; aliases: string; urls: string };
 const empty: Draft = { name: "", aliases: "", urls: "" };
 const dateTime = (value?: number) => value ? new Date(value * 1000).toLocaleString("zh-CN", {timeZone:"Asia/Shanghai", hour12:false}) : "—";
@@ -316,9 +316,9 @@ export function Customers({request, manage = false}: {request: Request; manage?:
             <div className="signal-title">{s.url?<a href={s.url} target="_blank" rel="noopener noreferrer">{s.title}</a>:s.title}</div>
             <div className="cell-meta"><span className="chip">{s.topic}</span> 发布 {s.published_at||"—"} · 采集 {dateTime(s.created_at)}</div>
             {!!s.fragments?.length&&<div className="customer-fragments">{s.fragments.map((f,i)=><span key={i} title={f.text}>{f.text}</span>)}</div>}
-            {s.url&&<button type="button" className="text-button" onClick={()=>evidence?.id===s.id?setEvidence(null):request(`/customer-signals/${s.id}`).then(d=>setEvidence({...d.evidence,id:s.id})).catch(e=>setError(e.message))}>{evidence?.id===s.id?"收起原文":"展开原文"}</button>}
+            {s.url&&<button type="button" className="text-button" onClick={()=>evidence?.id===s.id?setEvidence(null):request(`/customer-signals/${s.id}`).then(d=>setEvidence({...d.evidence,id:s.id})).catch(e=>setError(e.message))}>{evidence?.id===s.id?"收起":s.content_kind==="search_excerpt"?"看搜索摘要":"展开原文"}</button>}
             {evidence?.id===s.id&&<div className="customer-evidence-inline">
-              <small>{evidence.content_kind==="search_excerpt"?"搜索摘要，尚未读取完整正文":"来源正文"}</small>
+              <small>{evidence.content_kind==="search_excerpt"?"只抓到搜索摘要，正文还没读取":"来源正文"}</small>
               <pre>{evidence.raw_content}</pre>
             </div>}
           </div>)}

@@ -113,9 +113,10 @@ def test_only_explicit_claim_releases_exactly_one_next_item(database):
         facts = assignment_facts(db, False, 1094, False)
         assert facts["backlog_count"] == 1
         assert facts["assigned_count"] == 1
-        assert all(i["title"] == "已归集信息（展示模式已脱敏）" for i in facts["assigned_items"])
+        # 展示模式不再脱敏（eec8275）：指派条目直接显示真实标题。
+        assert sorted(i["title"] for i in facts["assigned_items"]) == ["需求0", "需求1"]
         assert all(
-            i["claimed_by"] == ("群成员" if i["business_status"] == "claimed" else None)
+            i["claimed_by"] == ("张三" if i["business_status"] == "claimed" else None)
             for i in facts["assigned_items"]
         )
 

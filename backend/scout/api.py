@@ -1055,7 +1055,7 @@ def customer_signals(customer_id: str | None = None, offset: int = Query(0, ge=0
             query = query.where(Customer.id == customer_id)
         total = db.scalar(select(func.count()).select_from(query.subquery()))
         rows = db.execute(query.order_by(CustomerSignal.created_at.desc(), CustomerSignal.id).offset(offset).limit(30))
-        # 客户监控信号对展示令牌同样显示真实名称与标题。
+        # 客户监控信号对展示令牌同样显示真实名称与标题（eec8275：展示模式不再脱敏）。
         return {"total": total, "items": [
             {**record(s), "customer_name": c.name, "title": d.title, "content_kind": d.content_kind}
             for s, c, d in rows]}

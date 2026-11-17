@@ -24,7 +24,7 @@ def test_validation_auth_and_manual_idempotency(client):
     assert "payload" not in a.json()
 
 
-def test_demo_separation_and_display_redaction(client, database):
+def test_demo_separation_and_display_snapshot(client, database):
     rule = client.post(
         "/api/v1/rules", json={"name": "测试", "query": "ERP", "provider": "demo"}
     ).json()
@@ -39,8 +39,8 @@ def test_demo_separation_and_display_redaction(client, database):
         "/api/v1/display/snapshot?demo=true", headers={"Authorization": "Bearer test-display"}
     ).json()
     assert redacted["item_count"] == 1
-    assert "text" not in redacted["items"][0]
-    assert "contacts" not in redacted["items"][0]
+    # 展示模式不再脱敏（item_record：所有调用方看到完整条目），demo 与正式库仍然互相隔离。
+    assert "text" in redacted["items"][0]
     assert sum(r[1] for r in redacted["trend"]) == 1
     assert (
         client.get("/api/v1/items", headers={"Authorization": "Bearer test-display"}).status_code
@@ -98,9 +98,9 @@ def test_chart_days_dedupe_and_filtered_evidence_permissions(client, database, m
     assert result["items"][0]["url"] == "https://example.org/b"
     public = client.get(path, headers={"Authorization": "Bearer test-display"}).json()
     assert public["total"] == 1
-    assert "url" not in public["items"][0]
-    assert "contacts" not in public["items"][0]
-    assert "私有" not in str(public)
+    # 展示模式不再脱敏（eec8275）：展示令牌同样看到完整条目（标题、链接与正文）。
+    assert public["items"][0]["url"] == "https://example.org/b"
+    assert public["items"][0]["title"].startswith("私有")
     assert client.get(path + "&offset=50").json()["items"] == []
     assert client.get("/api/v1/display/items?start=2&end=1").status_code == 422
     assert client.get(path, headers={"Authorization": "Bearer wrong"}).status_code == 401
@@ -124,8 +124,9 @@ def test_feed_cursor_and_map_exclude_archived_records(client, database):
     assert feed["after_id"] == "b"
     assert client.get("/api/v1/display/feed?after=100&after_id=b").json()["items"] == []
     public = client.get("/api/v1/display/feed?after=0", headers={"Authorization": "Bearer test-display"}).json()
-    assert "text" not in public["items"][0]
-    assert "url" not in public["items"][0]
+    # 展示模式不再脱敏（eec8275）：feed 同样返回完整条目。
+    assert public["items"][0]["text"] == "建设系统"
+    assert public["items"][0]["url"] == "https://example.org/a"
     assert len(client.get("/api/v1/items").json()) == 2
     assert client.get("/api/v1/display/items?start=0&end=101&region=湖北").json()["total"] == 2
     assert client.get("/api/v1/display/items?start=0&end=101&region=广东").json()["total"] == 0
