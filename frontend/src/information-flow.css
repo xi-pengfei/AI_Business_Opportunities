@@ -1,6 +1,3 @@
-.followup-panels { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:16px; margin-block:16px; }
-.followup-panels > .panel {min-width:0;}
-.information-flow-table {min-width:1100px; table-layout:auto;}
 .information-flow-table th, .information-flow-table td {width:auto!important; white-space:nowrap;}
 .information-flow-table td:first-child {min-width:180px; max-width:260px;}
 .information-flow-table td:nth-child(4) {min-width:180px; max-width:320px;}
@@ -9,7 +6,6 @@
 .followup-table td,.followup-table th {white-space:nowrap;}
 .followup-table td:first-child {min-width:200px; max-width:360px;}
 .information-flow-table thead, .followup-table thead {position:sticky; top:0; z-index:2; background:var(--surface, #1c2127);}
-@media(max-width:1000px){.followup-panels{grid-template-columns:minmax(0,1fr);}}
 /* Shared library geometry applies in both management and display views. */
 .information-flow-table.fragment-table {width:100%;min-width:1500px;table-layout:fixed;}
 .information-flow-table.fragment-table th,.information-flow-table.fragment-table td {overflow:hidden;vertical-align:middle;}

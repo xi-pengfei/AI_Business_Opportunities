@@ -60,7 +60,7 @@ flowchart TD
 
 ## 初始 API 边界
 
-`/api/v1/rules` 规则草稿、测试、启停；`/sources` 来源状态；`/accounts` 授权与检测；`/providers` 密钥引用及预算；`/items` 信息与证据；`/customers` 时间线；`/tasks` 任务查询与安全重试；`/notifications` 发送与确认；`/display/snapshot` 脱敏快照；`/display/events` SSE。
+`/api/v1/rules` 规则草稿、测试、启停；`/network-rules` 网络采集规则与统计；`/providers` 密钥引用及预算；`/items` 信息与证据；`/customers`、`/customer-signals` 客户档案与动向；`/tasks` 任务查询与安全重试；`/xiaohongshu` 小红书账号与采集；`/dingtalk/groups` 钉钉群；`/display/snapshot` 脱敏快照；`/display/events` SSE；`/display/items` 按时间/来源/地区下钻。
 
 异步动作返回 task_id（202），不得让请求等待完整采集链路。列表分页与稳定排序；筛选可映射 URL。错误返回错误码、可读原因、可执行建议与 trace_id，不能返回凭证。展示端使用独立受限授权，内部记录不通过前端简单隐藏实现保密。
 

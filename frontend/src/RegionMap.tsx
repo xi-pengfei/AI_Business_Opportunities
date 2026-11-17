@@ -3,11 +3,10 @@ import { MapChart, ScatterChart, TreemapChart } from 'echarts/charts';
 import { GeoComponent } from 'echarts/components';
 import china from './assets/china-provinces.json';
 import { Plot } from './Charts';
-import type { ChartSelection } from './Charts';
 import type { Snapshot } from './types';
 use([MapChart, ScatterChart, TreemapChart, GeoComponent]);
 registerMap('china-provinces', china as Parameters<typeof registerMap>[1]);
-export function RegionMap({data, onSelect, dark=false}: {data: Snapshot; dark?:boolean; onSelect?: (r: ChartSelection) => void}) {
+export function RegionMap({data, dark=false}: {data: Snapshot; dark?:boolean}) {
   const regions = data.regions || [];
   const regionTones = ['#294650','#345862','#406A73','#447177','#48767A'];
   const located = regions.reduce((sum, r) => sum + r.count, 0);
@@ -19,12 +18,9 @@ export function RegionMap({data, onSelect, dark=false}: {data: Snapshot; dark?:b
     return {name, short: region?.name || name, value: region?.count || 0,
       center: f.properties.center || f.properties.centroid};
   });
-  const open = (name: string) => onSelect?.({ start: Math.max(0, data.server_time - 90 * 86400), end: data.server_time,
-    region: name, label: `${name} · 地区信息` });
   return <section className="panel chart-panel map-panel">
     <div className="map-heading"><h2>商机地图</h2><span>已定位 {located} / 待定位 {data.region_unknown || 0}</span></div>
-      <div className="map-comparison"><Plot label="商机项目或采购单位省级分布，点击省份查看信息。"
-        onPick={i => { if(rows[i]?.value) open(rows[i].short); }}
+      <div className="map-comparison"><Plot label="商机项目或采购单位省级分布。"
         option={{ tooltip: {trigger: 'item', formatter: (p: {name: string; value: number | number[]}) => `${p.name} · ${Array.isArray(p.value) ? p.value[2] : p.value || 0} 条`},
           visualMap: {show: false, min: 0, max: Math.max(1,...regions.map(r=>r.count)), seriesIndex: 0,
             inRange: {color: [dark?'#14242B':'#e4eff5','#345862','#48767A']}},

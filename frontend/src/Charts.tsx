@@ -12,7 +12,6 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsCoreOption } from "echarts/core";
 import type { Snapshot } from "./types";
 import { clock } from "./types";
-import { RegionMap } from "./RegionMap";
 use([
   LineChart,
   BarChart,
@@ -25,9 +24,7 @@ use([
   VisualMapComponent,
   CanvasRenderer,
 ]);
-export type ChartSelection = { start: number; end: number; provider?: string; region?: string; label: string };
-export function Plot({ option, label, onPick }: { option: EChartsCoreOption; label: string;
-  onPick?: (index: number, series: string) => void }) {
+export function Plot({ option, label }: { option: EChartsCoreOption; label: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [dark,setDark]=useState(!!document.fullscreenElement);
   useEffect(()=>{const update=()=>setDark(!!document.fullscreenElement);document.addEventListener("fullscreenchange",update);return()=>document.removeEventListener("fullscreenchange",update);},[]);
@@ -75,15 +72,6 @@ export function Plot({ option, label, onPick }: { option: EChartsCoreOption; lab
       true,
     );
   }, [option,dark]);
-  useEffect(() => {
-    const instance = chart.current;
-    const click = (params: unknown) => {
-      const p = params as { dataIndex?: number; seriesName?: string };
-      if (typeof p.dataIndex === "number") onPick?.(p.dataIndex, p.seriesName || "");
-    };
-    instance?.on("click", click);
-    return () => { instance?.off("click", click); };
-  }, [onPick]);
   return <div className="plot" ref={ref} role="img" aria-label={label} />;
 }
 
@@ -143,14 +131,4 @@ export function FlowPanel({ data, dark = false }: { data: Snapshot; dark?: boole
       label: { color: ink, fontSize: 12 }, data: nodes.map(name => ({ name, itemStyle: { color: flowColor(name) } })), links: flows,
       lineStyle: { color: "source", curveness: .5, opacity: .22 }, emphasis: { focus: "adjacency" } }]
   }} />{!flows.length && <span className="chart-empty">等待信息推送</span>}</div></section>;
-}
-
-/** 大屏四联图表；系统分析页单独使用 HitRatePanel + RegionMap */
-export function Charts({ data, onSelect, dark = false }: { data: Snapshot; onSelect: (range: ChartSelection) => void; dark?: boolean }) {
-  return <>
-    <SourcePanel data={data} dark={dark} />
-    <HitRatePanel data={data} dark={dark} />
-    <FlowPanel data={data} dark={dark} />
-    <RegionMap data={data} onSelect={onSelect} dark={dark} />
-  </>;
 }

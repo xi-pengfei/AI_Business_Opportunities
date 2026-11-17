@@ -48,6 +48,9 @@
   color: var(--ink);
 }
 
+/* 纯黑大屏承载层：管理台页面保持浅色主题（原 black-theme.css，已并入本文件） */
+body:has(.screen),html:has(.screen) {background:var(--bg);}
+
 /* ---------- 字体层级 ----------
    五级：大屏标题 20/600 > 模块标题 16/600 > 表头 13/600
         > 正文/表格 13/400 > 辅助 12/400；数字全部等宽。 */
@@ -108,8 +111,7 @@
    black-theme.css 把面板/表头/hover 写死为 #000/#111，
    这里统一改回走 token，让上面的色板真正生效；
    terminal 保持「黑井」意图，用 --void（蓝黑）承接。 */
-.screen .panel,
-.screen .collector-strip {
+.screen .panel {
   background: var(--panel);
   border-color: var(--line);
 }
@@ -131,9 +133,8 @@
   color: var(--ink-2);
 }
 
-/* 信息库/跟进表正文从 12px 提到 13px，与表格层级规范一致 */
-.screen .library td,
-.screen .followup-panels td {
+/* 信息库正文从 12px 提到 13px，与表格层级规范一致 */
+.screen .library td {
   font-size: 13px;
 }
 
@@ -191,14 +192,6 @@
   vertical-align: middle;
 }
 
-/* 日志型：跟进面板 36px 行 */
-.screen .followup-panels th {
-  padding: 7px 8px;
-}
-.screen .followup-panels td {
-  padding: 7px 8px;
-}
-
 /* 采集监控表：28px → 32px 行高，容器同步放宽 */
 .screen .collector-monitor th,
 .screen .collector-monitor td {
@@ -212,7 +205,6 @@
    覆盖上方双规范：所有表格单元格单行显示，超长截断为省略号；
    行高压到 24px，状态胶囊同步缩小。 */
 .screen .library td,
-.screen .followup-panels td,
 .screen .collector-monitor td,
 .screen .collector-monitor th,
 .screen .information-flow-table td {
@@ -224,12 +216,10 @@
   padding-bottom: 2px;
 }
 .screen .library th,
-.screen .followup-panels th,
 .screen .information-flow-table th {
   white-space: nowrap;
 }
-.screen .library td .text-button,
-.screen .followup-panels td .text-button {
+.screen .library td .text-button {
   min-height: 20px;
   padding: 0;
   line-height: 1.35;
@@ -237,8 +227,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.screen .library .fragment-tag,
-.screen .followup-panels .fragment-tag {
+.screen .library .fragment-tag {
   min-height: 20px;
   padding: 0 6px;
   line-height: 18px;
@@ -262,22 +251,6 @@
   height: 120px;
 }
 
-/* 标题与信息片并排单行：标题不再独占一行，信息片内联跟随，整格单行截断 */
-.screen .followup-panels td .text-button {
-  display: inline;
-}
-.screen .followup-panels .fragment-tags {
-  display: inline-flex;
-  flex-wrap: nowrap;
-  max-width: 100%;
-  margin: 0 0 0 8px;
-  vertical-align: bottom;
-}
-.screen .followup-panels .fragment-tag {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
 /* ---------- 视觉打磨：层次 / 统一性 / 质感（纯样式，不动数据） ---------- */
 
 /* 头部：标题下方不加任何装饰线（渐变细条与毛笔笔触均已移除） */
@@ -288,10 +261,8 @@
 .screen h2 small {margin-left:auto;font-weight:400;color:var(--accent);font-variant-numeric:tabular-nums;}
 
 /* 2. 表格行的呼吸感：偶数行极淡斑马纹 + 悬停提亮 */
-.screen .library tbody tr:nth-child(even),
-.screen .followup-panels tbody tr:nth-child(even) {background:rgba(127,152,176,.06);}
-.screen .library tbody tr:hover,
-.screen .followup-panels tbody tr:hover {background:var(--surface-2);}
+.screen .library tbody tr:nth-child(even) {background:rgba(127,152,176,.06);}
+.screen .library tbody tr:hover {background:var(--surface-2);}
 .screen .collector-monitor tbody tr:hover {background:rgba(140,169,255,.08);}
 
 /* 3. 长列表底部渐隐：内容像“流出去”而不是被切断 */
@@ -469,9 +440,6 @@
 .screen .collector-monitor .cm-state-success {color:#39d98a;}
 .screen .notice {background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;}
 .screen .panel.terminal > h2 {position:relative;z-index:2;}
-
-/* ---------- 过渡期：大屏图表行只剩两张图 ---------- */
-.screen .charts-2 {grid-template-columns:1.15fr 1fr;}
 
 /* ---------- 控制台·系统分析页（与 customers 同风格容器） ---------- */
 .analysis-grid {display:grid;grid-template-columns:1fr 1.25fr;gap:16px;align-items:stretch;}

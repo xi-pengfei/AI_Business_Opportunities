@@ -1,7 +1,7 @@
 import './information-flow.css';
 import type React from 'react';
 import {AutoScroll} from './AutoScroll';
-import {clock, sourceName, businessState, fullTime, type Item} from './types';
+import {clock, sourceName, fullTime, type Item} from './types';
 import {expandCargo,cargoKey,cargoText,fragmentColor,type Cargo} from './fragments';
 import {StatusPill} from './StatusPill';
 export function SourceFields({item,landed}: {item:Item;moving:Cargo|null;landed:Set<string>}) {

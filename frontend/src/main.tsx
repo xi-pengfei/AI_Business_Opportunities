@@ -10,7 +10,7 @@ import { SourceFeed} from "./SourceFeed";
 import { Tasks } from "./Tasks";
 import {Information} from "./FlowPanels";
 import { Xiaohongshu } from "./Xiaohongshu";
-import { BusinessFollowup } from "./FollowupPanels";
+import { BusinessFollowup } from "./BusinessFollowup";
 import { NetworkRules } from "./NetworkRules";
 import { Customers } from "./Customers";
 import { TokenPanel, KeyIcon } from "./TokenPanel";
@@ -20,7 +20,6 @@ import { clock, fullTime, sourceName, status } from "./types";
 import type { Snapshot, Rule, Task, Item, Me, DingTalkConfig, InviteInfo } from "./types";
 import "./style.css";
 import "./display-layout.css";
-import "./black-theme.css";
 import "./design-tokens.css";
 import "./console.css";
 
@@ -348,7 +347,7 @@ function App() {
     setMoving(null);
     cargoQueue.current = []; currentCargo.current = null; setLibrary([]); setLanded(new Set()); activeCargo.current = false; feedCursor.current = null; setTerminalFeed([]);
     setData(null);
-  }, [demo, token]);
+  }, [token]);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -679,7 +678,7 @@ function App() {
                   }
                 />
               </div>
-              <div className="charts charts-2"><SourcePanel data={data} dark /><FlowPanel data={data} dark /></div>
+              <div className="charts"><SourcePanel data={data} dark /><FlowPanel data={data} dark /></div>
               <CollectorMonitor collectors={data.collectors} stale={!!connectionError} />
             </>
           )}
@@ -1040,39 +1039,6 @@ function TrendLine({ points }: { points: number[] }) {
       <i className="kpi-trend-dot" style={{ left: `${dotLeft}%`, bottom: `${dotBottom}%` }} />
     </div>
   );
-}
-function ChartRecords({ selection, request, close, open }: {
-  selection: ChartSelection;
-  request: (path: string) => Promise<{ total: number; items: Item[] }>;
-  close: () => void;
-  open: (item: Item) => void;
-}) {
-  const [offset, setOffset] = useState(0);
-  const [result, setResult] = useState<{ total: number; items: Item[] } | null>(null);
-  const [error, setError] = useState("");
-  const [retry, setRetry] = useState(0);
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { heading.current?.focus(); }, []);
-  useEffect(() => {
-    let active = true;
-    setResult(null); setError("");
-    const params = new URLSearchParams({ start: String(selection.start), end: String(selection.end), offset: String(offset) });
-    if (selection.provider) params.set("provider", selection.provider);
-    if (selection.region) params.set("region", selection.region);
-    request(`/display/items?${params}`).then(r => { if (active) setResult(r); })
-      .catch(e => { if (active) setError(e.message); });
-    return () => { active = false; };
-  }, [selection, offset, request, retry]);
-  return <section className="panel chart-records">
-    <div className="detail-title"><h2 tabIndex={-1} ref={heading}>{selection.label}
-      {result && <small> · {result.total} 条</small>}</h2><button onClick={close}>关闭筛选</button></div>
-    {error ? <p role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>重试</button></p>
-      : !result ? <p>正在读取信息…</p> : <>
-        <Information items={result.items} open={open} />
-        <div className="chart-pager"><button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>上一页</button>
-          <span>第 {offset / 50 + 1} 页</span><button disabled={offset + 50 >= result.total} onClick={() => setOffset(offset + 50)}>下一页</button></div>
-      </>}
-  </section>;
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -1,5 +1,5 @@
 import {AutoScroll} from './AutoScroll';
-import {sourceName,businessState,fullTime,type Item,type Snapshot} from './types';
+import {sourceName,fullTime,type Item,type Snapshot} from './types';
 import {StatusPill} from './StatusPill';
 import './information-flow.css';
 
@@ -11,10 +11,4 @@ export function BusinessFollowup({data,open}:{data:Snapshot;open:(item:Item)=>vo
       <tbody>{data.assigned_items.map(i=><tr key={i.id}><td><button className="text-button" onClick={()=>open(i)}>{i.title}</button></td><td>{sourceName(i)}</td><td><StatusPill item={i}/></td><td>{fullTime(i.sent_at)}</td><td>{i.claimed_by||'—'}</td><td>{fullTime(i.claimed_at)}</td></tr>)}</tbody>
     </table></AutoScroll>{!data.assigned_items.length&&<p className="empty">暂无已推送商机</p>}
   </section>;
-}
-
-export function FollowupPanels({data,open}:{data:Snapshot;open:(item:Item)=>void}) {
-  return <div className="followup-panels">
-    <BusinessFollowup data={data} open={open} />
-  </div>;
 }

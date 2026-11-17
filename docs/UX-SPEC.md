@@ -1,5 +1,7 @@
 # 页面与交互规格 v0.1
 
+> 本文为设计稿。实际实现路由为 display / rules / customers / xiaohongshu / tasks / information / analysis / users（见 frontend/src/main.tsx），下表仅保留交互原则参考价值。
+
 ## 导航和路由
 
 | 区域 | 路由 | 页面目标 |
