@@ -235,7 +235,7 @@ export function Customers({request, manage = false}: {request: Request; manage?:
         <button type="button" className="dr-close" onClick={cancel} aria-label="关闭编辑器">✕</button>
         <div className="dr-head">
           <div className="dr-eyebrow">{draft.id?"修改":"新增"} · 客户动向</div>
-          <h2 className="dr-title" id="customer-editor-title" tabIndex={-1} ref={heading}>{draft.id?"修改客户监测":"新增客户动向"}</h2>
+          <h2 className="dr-title" id="customer-editor-title" tabIndex={-1} ref={heading}>{draft.id?"修改客户":"新增客户动向"}</h2>
           <p className="dr-sub">填写企业全称即可，简称与参考网址帮助搜索更准。</p>
         </div>
         <div className="dr-body">
