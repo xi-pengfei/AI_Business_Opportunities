@@ -442,9 +442,13 @@
 .screen .panel.business-followup .lib-aurora {opacity:.45;}
 .screen .panel.business-followup > h2,
 .screen .panel.business-followup > .table-scroll {position:relative;z-index:2;}
-.screen .business-followup .followup-table {border-collapse:separate;border-spacing:0;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.14);border-radius:10px;overflow:hidden;box-shadow:0 5px 16px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.18);-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4);}
+.screen .business-followup .followup-table {border-collapse:separate;border-spacing:0;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.14);border-radius:10px;box-shadow:0 5px 16px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.18);-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4);}
+.screen .business-followup .followup-table thead th:first-child {border-top-left-radius:10px;}
+.screen .business-followup .followup-table thead th:last-child {border-top-right-radius:10px;}
+.screen .business-followup .followup-table tbody tr:last-child td:first-child {border-bottom-left-radius:10px;}
+.screen .business-followup .followup-table tbody tr:last-child td:last-child {border-bottom-right-radius:10px;}
 .screen .business-followup .followup-table thead {background:transparent;}
-.screen .business-followup .followup-table thead th {background:rgba(255,255,255,.06);color:#c3dde6;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,.12);}
+.screen .business-followup .followup-table thead th {position:sticky;top:0;z-index:3;background:rgba(255,255,255,.06);color:#c3dde6;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,.12);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);}
 .screen .business-followup .followup-table tbody td {border-bottom:1px solid rgba(255,255,255,.07);background:transparent;}
 .screen .business-followup .followup-table tbody tr:last-child td {border-bottom:none;}
 .screen .business-followup .followup-table tbody tr:hover td {background:rgba(141,212,222,.08);}
